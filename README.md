@@ -35,6 +35,12 @@ The **Enable stashing** setting is a kill-switch: turn it off to lock the tool
 without uninstalling it. The stash directory defaults to a folder inside your
 Moodle data root and can be changed in the plugin settings.
 
+Below the stash form, the page lists the plugins currently in the stash with a
+**Download as zip** link for each. The zip contains the plugin under its own
+top-level folder, so it can be re-installed through **Site administration →
+Plugins → Install plugins**. This list (and the download links) stay available
+even when stashing is disabled, since downloading is read-only.
+
 ### Restoring (CLI)
 
 After you have rebuilt or upgraded the code tree, and **before** you run

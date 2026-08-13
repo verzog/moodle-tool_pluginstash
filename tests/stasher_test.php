@@ -308,4 +308,48 @@ final class stasher_test extends \advanced_testcase {
         $this->assertTrue($setting->validate(make_request_directory()));
         $this->assertTrue($setting->validate(''));
     }
+
+    /**
+     * zip_component() builds a zip with the plugin under its own top-level folder.
+     *
+     * @return void
+     */
+    public function test_zip_component_builds_installable_zip(): void {
+        $this->resetAfterTest();
+        $stashdir = make_request_directory();
+        set_config('stashdir', $stashdir, 'tool_pluginstash');
+
+        $source = __DIR__ . '/fixtures/fakeplugin';
+        $stasher = new testable_stasher();
+        $stasher->set_source('local_fake', $source, 2026010100);
+        $stasher->stash(['local_fake']);
+
+        $zippath = make_request_directory() . '/out.zip';
+        $this->assertTrue($stasher->zip_component('local_fake', $zippath));
+        $this->assertFileExists($zippath);
+
+        $zip = new \ZipArchive();
+        $this->assertTrue($zip->open($zippath) === true);
+        $names = [];
+        for ($i = 0; $i < $zip->numFiles; $i++) {
+            $names[] = $zip->getNameIndex($i);
+        }
+        $zip->close();
+
+        $this->assertContains('fakeplugin/lib.php', $names);
+        $this->assertContains('fakeplugin/sub/note.txt', $names);
+    }
+
+    /**
+     * zip_component() returns false for a component that is not stashed.
+     *
+     * @return void
+     */
+    public function test_zip_component_unknown_returns_false(): void {
+        $this->resetAfterTest();
+        set_config('stashdir', make_request_directory(), 'tool_pluginstash');
+
+        $stasher = new stasher();
+        $this->assertFalse($stasher->zip_component('not_stashed', make_request_directory() . '/x.zip'));
+    }
 }

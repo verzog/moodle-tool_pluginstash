@@ -32,3 +32,20 @@ Feature: Manage the Plugin Stash tool
       | enabled | 1 | tool_pluginstash |
     When I visit "/admin/tool/pluginstash/index.php"
     Then I should not see "Plugin stashing is currently disabled"
+
+  Scenario: Stashed plugins are listed with a download link
+    Given the plugin "local_behatfake" is stashed as "local/behatfake"
+    And the following config values are set as admin:
+      | enabled | 1 | tool_pluginstash |
+    When I visit "/admin/tool/pluginstash/index.php"
+    Then I should see "Stashed plugins"
+    And I should see "local_behatfake"
+    And "Download as zip" "link" should exist
+
+  Scenario: Stashed plugins stay downloadable while stashing is disabled
+    Given the plugin "local_behatfake" is stashed as "local/behatfake"
+    And the following config values are set as admin:
+      | enabled | 0 | tool_pluginstash |
+    When I visit "/admin/tool/pluginstash/index.php"
+    Then I should see "Plugin stashing is currently disabled"
+    And "Download as zip" "link" should exist

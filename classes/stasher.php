@@ -240,6 +240,70 @@ class stasher {
     }
 
     /**
+     * Build a zip archive of a stashed component, ready to re-install.
+     *
+     * The archive contains the plugin under a single top-level folder named after
+     * the plugin directory, matching what Moodle's "install from ZIP" expects.
+     *
+     * @param string $component frankenstyle component name.
+     * @param string $zippath absolute path of the zip file to create.
+     * @return bool true on success, false if the component is not stashed.
+     * @throws \moodle_exception if the archive cannot be written.
+     */
+    public function zip_component(string $component, string $zippath): bool {
+        $manifest = $this->read_manifest();
+        if (!isset($manifest[$component]['reldir'])) {
+            return false;
+        }
+
+        $reldir = $manifest[$component]['reldir'];
+        $dir = $this->get_stash_dir() . '/' . $reldir;
+        if (!is_dir($dir)) {
+            return false;
+        }
+
+        $files = $this->build_zip_filelist($dir, basename($reldir));
+        if (empty($files)) {
+            return false;
+        }
+
+        $packer = get_file_packer('application/zip');
+        if ($packer->archive_to_pathname($files, $zippath) !== true) {
+            throw new \moodle_exception('errorzipfailed', 'tool_pluginstash', '', $component);
+        }
+        return true;
+    }
+
+    /**
+     * Build the archive-path => local-path map for zipping a directory tree.
+     *
+     * Symlinks are skipped, consistent with {@see self::copy_dir()}.
+     *
+     * @param string $dir absolute source directory.
+     * @param string $root name of the top-level folder inside the archive.
+     * @return array<string, string> map of archive path to absolute file path.
+     */
+    protected function build_zip_filelist(string $dir, string $root): array {
+        $dir = rtrim($dir, '/');
+
+        $files = [];
+        $iterator = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator($dir, \FilesystemIterator::SKIP_DOTS),
+            \RecursiveIteratorIterator::SELF_FIRST
+        );
+        foreach ($iterator as $item) {
+            if ($item->isLink() || !$item->isFile()) {
+                continue;
+            }
+            $relative = substr($item->getPathname(), strlen($dir) + 1);
+            $archivepath = $root . '/' . str_replace(DIRECTORY_SEPARATOR, '/', $relative);
+            $files[$archivepath] = $item->getPathname();
+        }
+        ksort($files);
+        return $files;
+    }
+
+    /**
      * Add or replace a single manifest entry and persist the manifest.
      *
      * @param string $component frankenstyle component name.
