@@ -1,0 +1,6 @@
+/moodle
+/moodle-plugin-ci
+vendor/
+node_modules/
+.idea/
+*.log
