@@ -1,0 +1,1 @@
+fakeplugin nested fixture file

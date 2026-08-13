@@ -31,7 +31,6 @@ use core_plugin_manager;
  * @license    http://www.gnu.org/licenses/gpl-3.0.txt GNU GPL v3 or later
  */
 class stasher {
-
     /** @var string Frankenstyle name of this plugin, used as the config plugin scope. */
     const COMPONENT = 'tool_pluginstash';
 
@@ -87,7 +86,7 @@ class stasher {
      * Return the installed add-on (non-core) plugins, keyed by component name.
      *
      * Plugins that are recorded in the database but missing from disk are skipped
-     * because there is nothing to copy.
+     * because there is nothing to copy, and this tool never lists itself.
      *
      * @return \core\plugininfo\base[] add-on plugin info objects, keyed and sorted by component.
      */
@@ -97,6 +96,10 @@ class stasher {
         $addons = [];
         foreach ($pluginman->get_plugins() as $plugins) {
             foreach ($plugins as $plugin) {
+                if ($plugin->component === self::COMPONENT) {
+                    // Never offer to stash this tool itself.
+                    continue;
+                }
                 if (!$plugin->is_standard() && !empty($plugin->rootdir)) {
                     $addons[$plugin->component] = $plugin;
                 }
@@ -113,23 +116,40 @@ class stasher {
      * @return bool[] map of component name to whether it was stashed.
      */
     public function stash(array $components): array {
-        $pluginman = core_plugin_manager::instance();
         $stashdir = $this->get_stash_dir();
 
         $results = [];
         foreach ($components as $component) {
-            $plugin = $pluginman->get_plugin_info($component);
-            if ($plugin === null || empty($plugin->rootdir)) {
+            $source = $this->get_component_source($component);
+            if ($source === null) {
                 $results[$component] = false;
                 continue;
             }
 
-            $reldir = $this->get_relative_dir($plugin->rootdir);
-            $this->copy_dir($plugin->rootdir, $stashdir . '/' . $reldir, true);
-            $this->write_manifest_entry($component, $reldir, (int) $plugin->versiondisk);
+            [$rootdir, $version] = $source;
+            $reldir = $this->get_relative_dir($rootdir);
+            $this->copy_dir($rootdir, $stashdir . '/' . $reldir, true);
+            $this->write_manifest_entry($component, $reldir, $version);
             $results[$component] = true;
         }
         return $results;
+    }
+
+    /**
+     * Resolve the on-disk directory and version of an installed component.
+     *
+     * This is the seam used by {@see self::stash()} to read plugin locations from
+     * the plugin manager; tests override it to drive stashing from a fixture tree.
+     *
+     * @param string $component frankenstyle component name.
+     * @return array{0: string, 1: int}|null [absolute root directory, version], or null if unavailable.
+     */
+    protected function get_component_source(string $component): ?array {
+        $plugin = core_plugin_manager::instance()->get_plugin_info($component);
+        if ($plugin === null || empty($plugin->rootdir)) {
+            return null;
+        }
+        return [$plugin->rootdir, (int) $plugin->versiondisk];
     }
 
     /**
