@@ -26,7 +26,6 @@ use moodleform;
  * @license    http://www.gnu.org/licenses/gpl-3.0.txt GNU GPL v3 or later
  */
 class stash_form extends moodleform {
-
     /**
      * Build one checkbox per add-on plugin plus a submit button.
      *

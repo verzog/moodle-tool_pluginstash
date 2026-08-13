@@ -29,7 +29,6 @@ use core_privacy\local\metadata\null_provider;
  * @license    http://www.gnu.org/licenses/gpl-3.0.txt GNU GPL v3 or later
  */
 class provider implements null_provider {
-
     /**
      * Get the language string identifier explaining why this plugin stores no personal data.
      *
