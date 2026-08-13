@@ -56,7 +56,14 @@ if ($options['help']) {
 }
 
 $stasher = new \tool_pluginstash\stasher();
-$manifest = $stasher->read_manifest();
+
+try {
+    $manifest = $stasher->read_manifest();
+} catch (moodle_exception $e) {
+    // A corrupt manifest must fail loudly: this runs when the administrator is
+    // relying on it for recovery.
+    cli_error($e->getMessage());
+}
 
 if (empty($manifest)) {
     cli_writeln(get_string('cli_nomanifest', 'tool_pluginstash', $stasher->get_stash_dir()));
@@ -75,15 +82,28 @@ $components = ($options['component'] !== '') ? [$options['component']] : array_k
 
 $restored = 0;
 $skipped = 0;
+$failed = 0;
 foreach ($components as $component) {
-    if ($stasher->restore_component($component, $overwrite)) {
-        cli_writeln(get_string('cli_restored', 'tool_pluginstash', $component));
-        $restored++;
-    } else {
-        cli_writeln(get_string('cli_skipped', 'tool_pluginstash', $component));
-        $skipped++;
+    try {
+        if ($stasher->restore_component($component, $overwrite)) {
+            cli_writeln(get_string('cli_restored', 'tool_pluginstash', $component));
+            $restored++;
+        } else {
+            cli_writeln(get_string('cli_skipped', 'tool_pluginstash', $component));
+            $skipped++;
+        }
+    } catch (moodle_exception $e) {
+        cli_writeln(get_string('cli_failed', 'tool_pluginstash', (object) [
+            'component' => $component,
+            'error'     => $e->getMessage(),
+        ]));
+        $failed++;
     }
 }
 
-cli_writeln(get_string('cli_done', 'tool_pluginstash', (object) ['restored' => $restored, 'skipped' => $skipped]));
-exit(0);
+cli_writeln(get_string('cli_done', 'tool_pluginstash', (object) [
+    'restored' => $restored,
+    'skipped'  => $skipped,
+    'failed'   => $failed,
+]));
+exit($failed > 0 ? 1 : 0);

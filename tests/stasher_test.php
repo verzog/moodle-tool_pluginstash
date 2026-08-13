@@ -205,4 +205,107 @@ final class stasher_test extends \advanced_testcase {
         $stasher = new stasher();
         $this->assertFalse($stasher->restore_component('missing_component', true, make_request_directory()));
     }
+
+    /**
+     * An overwriting restore replaces the destination and drops stale files.
+     *
+     * @return void
+     */
+    public function test_restore_overwrite_replaces_stale_files(): void {
+        $this->resetAfterTest();
+        $stashdir = make_request_directory();
+        set_config('stashdir', $stashdir, 'tool_pluginstash');
+
+        $source = __DIR__ . '/fixtures/fakeplugin';
+        $stasher = new testable_stasher();
+        $stasher->set_source('local_fake', $source, 2026010100);
+        $stasher->stash(['local_fake']);
+        $reldir = $stasher->get_relative_dir($source);
+
+        $target = make_request_directory();
+        $stasher->restore_component('local_fake', true, $target);
+
+        // Introduce a file that does not exist in the stashed copy.
+        $stale = $target . '/' . $reldir . '/stale.php';
+        file_put_contents($stale, '<?php // Stale.');
+        $this->assertFileExists($stale);
+
+        // A second overwriting restore must remove it.
+        $this->assertTrue($stasher->restore_component('local_fake', true, $target));
+        $this->assertFileDoesNotExist($stale);
+        $this->assertFileExists($target . '/' . $reldir . '/lib.php');
+    }
+
+    /**
+     * copy_dir() does not follow symlinks out of the tree.
+     *
+     * @return void
+     */
+    public function test_copy_dir_skips_symlinks(): void {
+        $this->resetAfterTest();
+        $stasher = new stasher();
+
+        $source = make_request_directory();
+        file_put_contents($source . '/real.txt', 'real');
+        $outside = make_request_directory();
+        file_put_contents($outside . '/secret.txt', 'secret');
+        symlink($outside, $source . '/link');
+
+        $dest = make_request_directory();
+        $stasher->copy_dir($source, $dest);
+
+        $this->assertFileExists($dest . '/real.txt');
+        $this->assertFileDoesNotExist($dest . '/link');
+        $this->assertFileDoesNotExist($dest . '/link/secret.txt');
+    }
+
+    /**
+     * stash() refuses a stash directory inside the code tree.
+     *
+     * @return void
+     */
+    public function test_stash_rejects_stashdir_in_code_tree(): void {
+        global $CFG;
+        $this->resetAfterTest();
+        set_config('stashdir', $CFG->dirroot . '/admin', 'tool_pluginstash');
+
+        $stasher = new testable_stasher();
+        $stasher->set_source('local_fake', __DIR__ . '/fixtures/fakeplugin', 2026010100);
+
+        $this->expectException(\moodle_exception::class);
+        $stasher->stash(['local_fake']);
+    }
+
+    /**
+     * read_manifest() throws when the manifest file is corrupt.
+     *
+     * @return void
+     */
+    public function test_read_manifest_throws_on_corrupt_json(): void {
+        $this->resetAfterTest();
+        $stashdir = make_request_directory();
+        set_config('stashdir', $stashdir, 'tool_pluginstash');
+        file_put_contents($stashdir . '/manifest.json', '{ not valid json ');
+
+        $stasher = new stasher();
+        $this->expectException(\moodle_exception::class);
+        $stasher->read_manifest();
+    }
+
+    /**
+     * The stash directory setting rejects a path inside the code tree.
+     *
+     * @return void
+     */
+    public function test_stashdir_setting_rejects_code_tree_path(): void {
+        global $CFG;
+        $this->resetAfterTest();
+        require_once($CFG->libdir . '/adminlib.php');
+
+        $setting = new admin_setting_stashdir('tool_pluginstash/stashdir', 'name', 'desc', '', PARAM_PATH);
+
+        $this->assertIsString($setting->validate($CFG->dirroot . '/admin'));
+        $this->assertTrue($setting->validate(make_request_directory()));
+        $this->assertTrue($setting->validate(''));
+    }
 }

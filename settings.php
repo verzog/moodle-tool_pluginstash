@@ -24,14 +24,17 @@
 
 defined('MOODLE_INTERNAL') || die();
 
-if ($hassiteconfig) {
-    $ADMIN->add('tools', new admin_externalpage(
-        'tool_pluginstash',
-        get_string('pluginname', 'tool_pluginstash'),
-        new moodle_url('/admin/tool/pluginstash/index.php'),
-        'tool/pluginstash:manage'
-    ));
+// Register the manage page independently of $hassiteconfig so that a manager who
+// holds tool/pluginstash:manage but not full site config can still reach it; the
+// external page enforces the capability itself.
+$ADMIN->add('tools', new admin_externalpage(
+    'tool_pluginstash',
+    get_string('pluginname', 'tool_pluginstash'),
+    new moodle_url('/admin/tool/pluginstash/index.php'),
+    'tool/pluginstash:manage'
+));
 
+if ($hassiteconfig) {
     $settings = new admin_settingpage('tool_pluginstash_settings', get_string('settings', 'tool_pluginstash'));
 
     $settings->add(new admin_setting_configcheckbox(
@@ -41,7 +44,7 @@ if ($hassiteconfig) {
         1
     ));
 
-    $settings->add(new admin_setting_configtext(
+    $settings->add(new \tool_pluginstash\admin_setting_stashdir(
         'tool_pluginstash/stashdir',
         get_string('stashdir', 'tool_pluginstash'),
         get_string('stashdir_desc', 'tool_pluginstash'),

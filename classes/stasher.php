@@ -97,7 +97,10 @@ class stasher {
         foreach ($pluginman->get_plugins() as $plugins) {
             foreach ($plugins as $plugin) {
                 if ($plugin->component === self::COMPONENT) {
-                    // Never offer to stash this tool itself.
+                    // Never offer to stash this tool itself: the CLI restore
+                    // script lives here and must already be present on disk to
+                    // run, so it cannot be bootstrapped out of its own stash.
+                    // Keep this plugin in version control instead (see README).
                     continue;
                 }
                 if (!$plugin->is_standard() && !empty($plugin->rootdir)) {
@@ -117,6 +120,7 @@ class stasher {
      */
     public function stash(array $components): array {
         $stashdir = $this->get_stash_dir();
+        $this->guard_stash_dir($stashdir);
 
         $results = [];
         foreach ($components as $component) {
@@ -128,11 +132,36 @@ class stasher {
 
             [$rootdir, $version] = $source;
             $reldir = $this->get_relative_dir($rootdir);
-            $this->copy_dir($rootdir, $stashdir . '/' . $reldir, true);
+            // Replace (not merge) so a re-stash of a slimmer plugin version leaves
+            // no stale files behind. copy_dir() throws if any copy fails, so the
+            // manifest entry below is only written for a complete stash.
+            $this->replace_dir($rootdir, $stashdir . '/' . $reldir);
             $this->write_manifest_entry($component, $reldir, $version);
             $results[$component] = true;
         }
         return $results;
+    }
+
+    /**
+     * Refuse to use a stash directory that lives inside the Moodle code tree.
+     *
+     * A stash under dirroot would be wiped by the very rebuild it is meant to
+     * survive, and a stash inside a plugin being copied would make copy_dir()
+     * recurse into its own output.
+     *
+     * @param string $stashdir absolute path of the configured stash directory.
+     * @return void
+     * @throws \moodle_exception if the path resolves inside dirroot.
+     */
+    protected function guard_stash_dir(string $stashdir): void {
+        global $CFG;
+
+        $dirroot = rtrim($CFG->dirroot, '/');
+        $real = realpath($stashdir);
+        $check = ($real !== false) ? $real : rtrim($stashdir, '/');
+        if ($check === $dirroot || strpos($check . '/', $dirroot . '/') === 0) {
+            throw new \moodle_exception('errorstashdirincodetree', 'tool_pluginstash', '', $stashdir);
+        }
     }
 
     /**
@@ -181,7 +210,9 @@ class stasher {
             return false;
         }
 
-        $this->copy_dir($source, $dest, $overwrite);
+        // Replace the destination wholesale so an overwrite never leaves a
+        // hybrid of the old and stashed versions on disk.
+        $this->replace_dir($source, $dest);
         return true;
     }
 
@@ -195,7 +226,16 @@ class stasher {
         if (!is_readable($file)) {
             return [];
         }
-        $data = json_decode(file_get_contents($file), true);
+        $contents = (string) file_get_contents($file);
+        if (trim($contents) === '') {
+            return [];
+        }
+        $data = json_decode($contents, true);
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            // Surface corruption loudly rather than silently reporting an empty
+            // manifest when an administrator is relying on it for recovery.
+            throw new \moodle_exception('errormanifestcorrupt', 'tool_pluginstash', '', $file);
+        }
         return is_array($data) ? $data : [];
     }
 
@@ -208,14 +248,36 @@ class stasher {
      * @return void
      */
     protected function write_manifest_entry(string $component, string $reldir, int $version): void {
-        $manifest = $this->read_manifest();
-        $manifest[$component] = [
-            'component' => $component,
-            'reldir'    => $reldir,
-            'version'   => $version,
-            'stashed'   => time(),
-        ];
-        $this->write_manifest($manifest);
+        // Serialise the read-modify-write so concurrent stash requests do not
+        // drop each other's entries.
+        $lock = $this->get_manifest_lock();
+        try {
+            $manifest = $this->read_manifest();
+            $manifest[$component] = [
+                'component' => $component,
+                'reldir'    => $reldir,
+                'version'   => $version,
+                'stashed'   => time(),
+            ];
+            $this->write_manifest($manifest);
+        } finally {
+            $lock->release();
+        }
+    }
+
+    /**
+     * Acquire an exclusive lock guarding manifest updates.
+     *
+     * @return \core\lock\lock the acquired lock; release it when done.
+     * @throws \moodle_exception if the lock cannot be obtained.
+     */
+    protected function get_manifest_lock(): \core\lock\lock {
+        $factory = \core\lock\lock_config::get_lock_factory('tool_pluginstash');
+        $lock = $factory->get_lock('manifest', 10);
+        if (!$lock) {
+            throw new \moodle_exception('errormanifestlock', 'tool_pluginstash');
+        }
+        return $lock;
     }
 
     /**
@@ -234,12 +296,34 @@ class stasher {
     }
 
     /**
+     * Replace a destination directory with a fresh copy of the source tree.
+     *
+     * Any existing destination is removed first so no files that are absent from
+     * the source survive the copy.
+     *
+     * @param string $from source directory.
+     * @param string $to destination directory.
+     * @return void
+     */
+    protected function replace_dir(string $from, string $to): void {
+        if (is_dir($to)) {
+            remove_dir($to);
+        }
+        $this->copy_dir($from, $to);
+    }
+
+    /**
      * Recursively copy a directory tree.
+     *
+     * Symlinks are never followed: a link could point outside the plugin or, if
+     * it targets an ancestor, cause unbounded recursion. A failed copy throws
+     * rather than being silently ignored.
      *
      * @param string $from source directory.
      * @param string $to destination directory.
      * @param bool $overwrite whether to overwrite files that already exist at the destination.
      * @return void
+     * @throws \moodle_exception if a file cannot be copied.
      */
     public function copy_dir(string $from, string $to, bool $overwrite = true): void {
         $from = rtrim($from, '/');
@@ -250,7 +334,7 @@ class stasher {
         }
 
         foreach (new \DirectoryIterator($from) as $item) {
-            if ($item->isDot()) {
+            if ($item->isDot() || $item->isLink()) {
                 continue;
             }
             $src = $item->getPathname();
@@ -258,7 +342,9 @@ class stasher {
             if ($item->isDir()) {
                 $this->copy_dir($src, $dst, $overwrite);
             } else if (!file_exists($dst) || $overwrite) {
-                copy($src, $dst);
+                if (!copy($src, $dst)) {
+                    throw new \moodle_exception('errorcopyfailed', 'tool_pluginstash', '', $src);
+                }
             }
         }
     }

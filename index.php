@@ -35,26 +35,13 @@ require_capability('tool/pluginstash:manage', context_system::instance());
 
 $stasher = new \tool_pluginstash\stasher();
 
-echo $OUTPUT->header();
-echo $OUTPUT->heading(get_string('pluginname', 'tool_pluginstash'));
+$enabled = $stasher->is_enabled();
+$addons = $enabled ? $stasher->get_addon_plugins() : [];
+$form = empty($addons) ? null : new \tool_pluginstash\form\stash_form($PAGE->url->out(false), ['addons' => $addons]);
 
-if (!$stasher->is_enabled()) {
-    echo $OUTPUT->notification(get_string('disablednotice', 'tool_pluginstash'), 'info');
-    echo $OUTPUT->footer();
-    die();
-}
-
-$addons = $stasher->get_addon_plugins();
-
-if (empty($addons)) {
-    echo $OUTPUT->notification(get_string('noaddons', 'tool_pluginstash'), 'info');
-    echo $OUTPUT->footer();
-    die();
-}
-
-$form = new \tool_pluginstash\form\stash_form($PAGE->url->out(false), ['addons' => $addons]);
-
-if ($data = $form->get_data()) {
+// Process the submission before emitting any output so the redirect is a clean
+// post/redirect/get and never hits "headers already sent".
+if ($form !== null && ($data = $form->get_data())) {
     $selected = [];
     foreach (array_keys($addons) as $component) {
         $field = 'plugin_' . $component;
@@ -68,7 +55,16 @@ if ($data = $form->get_data()) {
     redirect($PAGE->url, get_string('stashcount', 'tool_pluginstash', $stashed));
 }
 
-echo $OUTPUT->box(get_string('stashintro', 'tool_pluginstash', $stasher->get_stash_dir()));
-$form->display();
+echo $OUTPUT->header();
+echo $OUTPUT->heading(get_string('pluginname', 'tool_pluginstash'));
+
+if (!$enabled) {
+    echo $OUTPUT->notification(get_string('disablednotice', 'tool_pluginstash'), 'info');
+} else if (empty($addons)) {
+    echo $OUTPUT->notification(get_string('noaddons', 'tool_pluginstash'), 'info');
+} else {
+    echo $OUTPUT->box(get_string('stashintro', 'tool_pluginstash', $stasher->get_stash_dir()));
+    $form->display();
+}
 
 echo $OUTPUT->footer();

@@ -10,8 +10,15 @@ Moodle code tree often and want to keep your add-on plugins handy.
 
 ## Requirements
 
-- Moodle 5.0+ (`MOODLE_500_STABLE` or newer)
+- Moodle 5.0–5.1 (`MOODLE_500_STABLE`, `MOODLE_501_STABLE`)
 - PHP 8.2+
+
+The declared support range is `$plugin->supported = [500, 501]`; newer releases
+(5.2+) are not yet tested and will report as unsupported.
+
+The stash directory must live **outside** the Moodle code tree (`$CFG->dirroot`).
+A path inside the code tree is rejected by the settings form, because a rebuild
+would delete the stash along with the code it is meant to protect.
 
 ## Usage
 
@@ -46,6 +53,14 @@ Useful options:
 
 Restore is CLI-only by design: it must run before Moodle boots the plugins, so
 it cannot live in the web UI.
+
+> **Prerequisite:** `restore.php` is part of this plugin, so this plugin must
+> itself be present in the rebuilt code tree before you can restore. It excludes
+> itself from stashing precisely because you cannot bootstrap the restore script
+> from a stash it would have to already be running to unpack. Keep
+> `admin/tool/pluginstash` in your project's version control (or reinstall it
+> from the Moodle plugins directory) as the first step after a rebuild; then run
+> the command above to restore the remaining add-on plugins.
 
 ## Licence
 
