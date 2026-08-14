@@ -122,24 +122,28 @@ class stasher {
         $stashdir = $this->get_stash_dir();
         $this->guard_stash_dir($stashdir);
 
-        $results = [];
-        foreach ($components as $component) {
-            $source = $this->get_component_source($component);
-            if ($source === null) {
-                $results[$component] = false;
-                continue;
-            }
+        // Hold the stash lock across the directory replacement and the manifest
+        // write so a concurrent download never sees a half-replaced directory.
+        return $this->with_lock(function () use ($components, $stashdir): array {
+            $results = [];
+            foreach ($components as $component) {
+                $source = $this->get_component_source($component);
+                if ($source === null) {
+                    $results[$component] = false;
+                    continue;
+                }
 
-            [$rootdir, $version] = $source;
-            $reldir = $this->get_relative_dir($rootdir);
-            // Replace (not merge) so a re-stash of a slimmer plugin version leaves
-            // no stale files behind. copy_dir() throws if any copy fails, so the
-            // manifest entry below is only written for a complete stash.
-            $this->replace_dir($rootdir, $stashdir . '/' . $reldir);
-            $this->write_manifest_entry($component, $reldir, $version);
-            $results[$component] = true;
-        }
-        return $results;
+                [$rootdir, $version] = $source;
+                $reldir = $this->get_relative_dir($rootdir);
+                // Replace (not merge) so a re-stash of a slimmer plugin version leaves
+                // no stale files behind. copy_dir() throws if any copy fails, so the
+                // manifest entry below is only written for a complete stash.
+                $this->replace_dir($rootdir, $stashdir . '/' . $reldir);
+                $this->write_manifest_entry($component, $reldir, $version);
+                $results[$component] = true;
+            }
+            return $results;
+        });
     }
 
     /**
@@ -194,26 +198,30 @@ class stasher {
 
         $targetroot = ($targetroot === null) ? $CFG->dirroot : rtrim($targetroot, '/');
 
-        $manifest = $this->read_manifest();
-        if (!isset($manifest[$component]['reldir'])) {
-            return false;
-        }
+        // Hold the stash lock so the source directory cannot be replaced by a
+        // concurrent stash while it is being read.
+        return $this->with_lock(function () use ($component, $overwrite, $targetroot): bool {
+            $manifest = $this->read_manifest();
+            if (!isset($manifest[$component]['reldir'])) {
+                return false;
+            }
 
-        $reldir = $manifest[$component]['reldir'];
-        $source = $this->get_stash_dir() . '/' . $reldir;
-        if (!is_dir($source)) {
-            return false;
-        }
+            $reldir = $manifest[$component]['reldir'];
+            $source = $this->get_stash_dir() . '/' . $reldir;
+            if (!is_dir($source)) {
+                return false;
+            }
 
-        $dest = $targetroot . '/' . $reldir;
-        if (is_dir($dest) && !$overwrite) {
-            return false;
-        }
+            $dest = $targetroot . '/' . $reldir;
+            if (is_dir($dest) && !$overwrite) {
+                return false;
+            }
 
-        // Replace the destination wholesale so an overwrite never leaves a
-        // hybrid of the old and stashed versions on disk.
-        $this->replace_dir($source, $dest);
-        return true;
+            // Replace the destination wholesale so an overwrite never leaves a
+            // hybrid of the old and stashed versions on disk.
+            $this->replace_dir($source, $dest);
+            return true;
+        });
     }
 
     /**
@@ -240,6 +248,74 @@ class stasher {
     }
 
     /**
+     * Build a zip archive of a stashed component, ready to re-install.
+     *
+     * The archive contains the plugin under a single top-level folder named after
+     * the plugin directory, matching what Moodle's "install from ZIP" expects.
+     *
+     * @param string $component frankenstyle component name.
+     * @param string $zippath absolute path of the zip file to create.
+     * @return bool true on success, false if the component is not stashed.
+     * @throws \moodle_exception if the archive cannot be written.
+     */
+    public function zip_component(string $component, string $zippath): bool {
+        // Hold the stash lock while enumerating and archiving so a concurrent
+        // stash cannot replace the directory mid-pack and yield a partial zip.
+        return $this->with_lock(function () use ($component, $zippath): bool {
+            $manifest = $this->read_manifest();
+            if (!isset($manifest[$component]['reldir'])) {
+                return false;
+            }
+
+            $reldir = $manifest[$component]['reldir'];
+            $dir = $this->get_stash_dir() . '/' . $reldir;
+            if (!is_dir($dir)) {
+                return false;
+            }
+
+            $files = $this->build_zip_filelist($dir, basename($reldir));
+            if (empty($files)) {
+                return false;
+            }
+
+            $packer = get_file_packer('application/zip');
+            if ($packer->archive_to_pathname($files, $zippath) !== true) {
+                throw new \moodle_exception('errorzipfailed', 'tool_pluginstash', '', $component);
+            }
+            return true;
+        });
+    }
+
+    /**
+     * Build the archive-path => local-path map for zipping a directory tree.
+     *
+     * Symlinks are skipped, consistent with {@see self::copy_dir()}.
+     *
+     * @param string $dir absolute source directory.
+     * @param string $root name of the top-level folder inside the archive.
+     * @return array<string, string> map of archive path to absolute file path.
+     */
+    protected function build_zip_filelist(string $dir, string $root): array {
+        $dir = rtrim($dir, '/');
+
+        $files = [];
+        $iterator = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator($dir, \FilesystemIterator::SKIP_DOTS),
+            \RecursiveIteratorIterator::SELF_FIRST
+        );
+        foreach ($iterator as $item) {
+            if ($item->isLink() || !$item->isFile()) {
+                continue;
+            }
+            $relative = substr($item->getPathname(), strlen($dir) + 1);
+            $archivepath = $root . '/' . str_replace(DIRECTORY_SEPARATOR, '/', $relative);
+            $files[$archivepath] = $item->getPathname();
+        }
+        ksort($files);
+        return $files;
+    }
+
+    /**
      * Add or replace a single manifest entry and persist the manifest.
      *
      * @param string $component frankenstyle component name.
@@ -248,36 +324,39 @@ class stasher {
      * @return void
      */
     protected function write_manifest_entry(string $component, string $reldir, int $version): void {
-        // Serialise the read-modify-write so concurrent stash requests do not
-        // drop each other's entries.
-        $lock = $this->get_manifest_lock();
-        try {
-            $manifest = $this->read_manifest();
-            $manifest[$component] = [
-                'component' => $component,
-                'reldir'    => $reldir,
-                'version'   => $version,
-                'stashed'   => time(),
-            ];
-            $this->write_manifest($manifest);
-        } finally {
-            $lock->release();
-        }
+        // The caller (stash()) already holds the stash lock, which serialises
+        // this read-modify-write against other stash requests.
+        $manifest = $this->read_manifest();
+        $manifest[$component] = [
+            'component' => $component,
+            'reldir'    => $reldir,
+            'version'   => $version,
+            'stashed'   => time(),
+        ];
+        $this->write_manifest($manifest);
     }
 
     /**
-     * Acquire an exclusive lock guarding manifest updates.
+     * Run a callback while holding the exclusive stash lock.
      *
-     * @return \core\lock\lock the acquired lock; release it when done.
+     * The single lock guards every operation that reads or writes the stash
+     * directory or its manifest (stash, restore, zip), so those cannot interleave.
+     *
+     * @param callable $callback the work to run under the lock.
+     * @return mixed whatever the callback returns.
      * @throws \moodle_exception if the lock cannot be obtained.
      */
-    protected function get_manifest_lock(): \core\lock\lock {
+    protected function with_lock(callable $callback) {
         $factory = \core\lock\lock_config::get_lock_factory('tool_pluginstash');
-        $lock = $factory->get_lock('manifest', 10);
+        $lock = $factory->get_lock('stash', 10);
         if (!$lock) {
-            throw new \moodle_exception('errormanifestlock', 'tool_pluginstash');
+            throw new \moodle_exception('errorstashlock', 'tool_pluginstash');
         }
-        return $lock;
+        try {
+            return $callback();
+        } finally {
+            $lock->release();
+        }
     }
 
     /**

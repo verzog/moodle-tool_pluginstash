@@ -67,4 +67,30 @@ if (!$enabled) {
     $form->display();
 }
 
+// The list of already-stashed plugins is a read-only view, shown regardless of
+// whether stashing is currently enabled, with a download link per plugin.
+$stashed = $stasher->read_manifest();
+if (!empty($stashed)) {
+    echo $OUTPUT->heading(get_string('stashedplugins', 'tool_pluginstash'), 3);
+
+    $table = new html_table();
+    $table->head = [
+        get_string('plugin'),
+        get_string('stashedon', 'tool_pluginstash'),
+        get_string('download'),
+    ];
+    foreach ($stashed as $entry) {
+        $url = new moodle_url('/admin/tool/pluginstash/download.php', [
+            'component' => $entry['component'],
+            'sesskey'   => sesskey(),
+        ]);
+        $table->data[] = [
+            s($entry['component']),
+            userdate($entry['stashed'], '%d/%m/%Y'),
+            html_writer::link($url, get_string('downloadzip', 'tool_pluginstash')),
+        ];
+    }
+    echo html_writer::table($table);
+}
+
 echo $OUTPUT->footer();
