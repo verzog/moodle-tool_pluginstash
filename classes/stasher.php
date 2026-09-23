@@ -28,7 +28,7 @@ use core_plugin_manager;
  *
  * @package    tool_pluginstash
  * @copyright  2026 Vernon Spain
- * @license    http://www.gnu.org/licenses/gpl-3.0.txt GNU GPL v3 or later
+ * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class stasher {
     /** @var string Frankenstyle name of this plugin, used as the config plugin scope. */
@@ -83,10 +83,13 @@ class stasher {
     }
 
     /**
-     * Return the installed add-on (non-core) plugins, keyed by component name.
+     * Return the add-on (non-core) plugins that are installed on this site and present on disk.
      *
-     * Plugins that are recorded in the database but missing from disk are skipped
-     * because there is nothing to copy, and this tool never lists itself.
+     * The list is limited to plugins Moodle records as installed (they have a
+     * database version) and whose directory actually exists, so it never offers
+     * a plugin that is only present on disk but was never installed, one that is
+     * recorded in the database but missing from disk, a core plugin, or this tool
+     * itself.
      *
      * @return \core\plugininfo\base[] add-on plugin info objects, keyed and sorted by component.
      */
@@ -103,9 +106,21 @@ class stasher {
                     // Keep this plugin in version control instead (see README).
                     continue;
                 }
-                if (!$plugin->is_standard() && !empty($plugin->rootdir)) {
-                    $addons[$plugin->component] = $plugin;
+                if ($plugin->is_standard()) {
+                    // Core plugins ship with Moodle; there is nothing to preserve.
+                    continue;
                 }
+                if (empty($plugin->versiondb)) {
+                    // Present on disk but never installed on this site (for example
+                    // a leftover directory): not something the administrator asked
+                    // to keep, so do not list it.
+                    continue;
+                }
+                if (empty($plugin->rootdir) || !is_dir($plugin->rootdir)) {
+                    // Recorded in the database but the files are gone: nothing to copy.
+                    continue;
+                }
+                $addons[$plugin->component] = $plugin;
             }
         }
         ksort($addons);

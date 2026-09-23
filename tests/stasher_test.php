@@ -27,7 +27,7 @@ require_once(__DIR__ . '/fixtures/testable_stasher.php');
  *
  * @package    tool_pluginstash
  * @copyright  2026 Vernon Spain
- * @license    http://www.gnu.org/licenses/gpl-3.0.txt GNU GPL v3 or later
+ * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 #[CoversClass(stasher::class)]
 final class stasher_test extends \advanced_testcase {
@@ -82,14 +82,18 @@ final class stasher_test extends \advanced_testcase {
         // A known core plugin must never be listed as an add-on.
         $this->assertArrayNotHasKey('mod_assign', $addons);
 
-        // The result matches the plugin manager's non-standard set, minus this tool itself.
+        // The result matches the plugin manager's installed, on-disk, non-standard
+        // set, minus this tool itself.
         $expected = [];
         foreach (\core_plugin_manager::instance()->get_plugins() as $plugins) {
             foreach ($plugins as $plugin) {
                 if ($plugin->component === 'tool_pluginstash') {
                     continue;
                 }
-                if (!$plugin->is_standard() && !empty($plugin->rootdir)) {
+                if ($plugin->is_standard() || empty($plugin->versiondb)) {
+                    continue;
+                }
+                if (!empty($plugin->rootdir) && is_dir($plugin->rootdir)) {
                     $expected[] = $plugin->component;
                 }
             }
