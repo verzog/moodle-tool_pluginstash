@@ -20,7 +20,7 @@
  * @package    tool_pluginstash
  * @category   test
  * @copyright  2026 Vernon Spain
- * @license    http://www.gnu.org/licenses/gpl-3.0.txt GNU GPL v3 or later
+ * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
 // NOTE: no MOODLE_INTERNAL test here, this file may be required by behat before Moodle is installed.
@@ -33,7 +33,7 @@ require_once(__DIR__ . '/../../../../../lib/behat/behat_base.php');
  * @package    tool_pluginstash
  * @category   test
  * @copyright  2026 Vernon Spain
- * @license    http://www.gnu.org/licenses/gpl-3.0.txt GNU GPL v3 or later
+ * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class behat_tool_pluginstash extends behat_base {
     /**

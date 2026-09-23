@@ -28,7 +28,7 @@ use core_plugin_manager;
  *
  * @package    tool_pluginstash
  * @copyright  2026 Vernon Spain
- * @license    http://www.gnu.org/licenses/gpl-3.0.txt GNU GPL v3 or later
+ * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class stasher {
     /** @var string Frankenstyle name of this plugin, used as the config plugin scope. */

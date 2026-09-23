@@ -27,7 +27,7 @@ require_once(__DIR__ . '/fixtures/testable_stasher.php');
  *
  * @package    tool_pluginstash
  * @copyright  2026 Vernon Spain
- * @license    http://www.gnu.org/licenses/gpl-3.0.txt GNU GPL v3 or later
+ * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 #[CoversClass(stasher::class)]
 final class stasher_test extends \advanced_testcase {

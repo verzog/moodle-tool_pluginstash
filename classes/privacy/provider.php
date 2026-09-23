@@ -26,7 +26,7 @@ use core_privacy\local\metadata\null_provider;
  *
  * @package    tool_pluginstash
  * @copyright  2026 Vernon Spain
- * @license    http://www.gnu.org/licenses/gpl-3.0.txt GNU GPL v3 or later
+ * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class provider implements null_provider {
     /**

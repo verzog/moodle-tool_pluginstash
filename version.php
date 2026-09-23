@@ -19,14 +19,14 @@
  *
  * @package    tool_pluginstash
  * @copyright  2026 Vernon Spain
- * @license    http://www.gnu.org/licenses/gpl-3.0.txt GNU GPL v3 or later
+ * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
 defined('MOODLE_INTERNAL') || die();
 
 $plugin->component = 'tool_pluginstash';
-$plugin->version   = 2026081301;
+$plugin->version   = 2026092300;
 $plugin->requires  = 2025041400;
 $plugin->supported = [500, 501];
 $plugin->maturity  = MATURITY_STABLE;
-$plugin->release   = 'v1.1.0';
+$plugin->release   = 'v1.1.1';

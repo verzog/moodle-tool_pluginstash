@@ -25,7 +25,7 @@ namespace tool_pluginstash;
  *
  * @package    tool_pluginstash
  * @copyright  2026 Vernon Spain
- * @license    http://www.gnu.org/licenses/gpl-3.0.txt GNU GPL v3 or later
+ * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class testable_stasher extends stasher {
     /** @var array<string, array{0: string, 1: int}> Map of component to [rootdir, version]. */
