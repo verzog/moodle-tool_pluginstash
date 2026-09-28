@@ -356,4 +356,29 @@ final class stasher_test extends \advanced_testcase {
         $stasher = new stasher();
         $this->assertFalse($stasher->zip_component('not_stashed', make_request_directory() . '/x.zip'));
     }
+
+    /**
+     * Every capability declared in db/access.php has a language string.
+     *
+     * The roles UI resolves the capability's name via get_string(), so a missing
+     * string throws there even though phpunit and behat never open that page.
+     *
+     * @return void
+     */
+    public function test_capabilities_have_language_strings(): void {
+        global $CFG;
+
+        $capabilities = [];
+        require($CFG->dirroot . '/admin/tool/pluginstash/db/access.php');
+
+        $sm = get_string_manager();
+        foreach (array_keys($capabilities) as $capname) {
+            // Capability "tool/pluginstash:manage" maps to string "pluginstash:manage".
+            $stringid = preg_replace('#^[^/]+/#', '', $capname);
+            $this->assertTrue(
+                $sm->string_exists($stringid, 'tool_pluginstash'),
+                "Missing language string '{$stringid}' for capability '{$capname}'"
+            );
+        }
+    }
 }

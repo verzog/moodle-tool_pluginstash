@@ -55,6 +55,7 @@ $string['errorstashlock'] = 'Could not acquire the stash lock. Another stash ope
 $string['errorzipfailed'] = 'Failed to build a zip archive for {$a}.';
 $string['noaddons'] = 'No additional plugins are installed. There is nothing to stash.';
 $string['pluginname'] = 'Plugin Stash';
+$string['pluginstash:manage'] = 'Manage the Plugin Stash tool';
 $string['privacy:metadata'] = 'The Plugin Stash tool only copies plugin code directories and a manifest of what was copied. It does not store any personal data.';
 $string['settings'] = 'Plugin Stash settings';
 $string['stashcount'] = 'Stashed {$a} plugin(s).';
