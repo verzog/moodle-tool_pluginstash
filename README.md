@@ -10,15 +10,39 @@ Moodle code tree often and want to keep your add-on plugins handy.
 
 ## Requirements
 
-- Moodle 5.0–5.1 (`MOODLE_500_STABLE`, `MOODLE_501_STABLE`)
+- Moodle 5.0–5.3 (`MOODLE_500_STABLE` through `MOODLE_503_STABLE`)
 - PHP 8.2+
 
-The declared support range is `$plugin->supported = [500, 501]`; newer releases
-(5.2+) are not yet tested and will report as unsupported.
+The declared support range is `$plugin->supported = [500, 503]`; older releases
+(pre-5.0) and newer releases (5.4+) are not tested and will report as
+unsupported.
 
 The stash directory must live **outside** the Moodle code tree (`$CFG->dirroot`).
 A path inside the code tree is rejected by the settings form, because a rebuild
 would delete the stash along with the code it is meant to protect.
+
+## Installation
+
+### From a ZIP (web UI)
+
+1. Download the plugin ZIP (from a release, or from the **Download as zip** link
+   on another site's stash page).
+2. Go to **Site administration → Plugins → Install plugins**.
+3. Drag the ZIP into the installer, or choose it with the file picker, and
+   follow the prompts to **Install plugin from the ZIP file**.
+4. Moodle unpacks it to `admin/tool/pluginstash` and runs the upgrade; complete
+   the upgrade when prompted.
+
+### Manually (unzip into the code tree)
+
+1. Unzip the plugin so its contents land in `admin/tool/pluginstash` under your
+   Moodle code tree (the directory must be named `pluginstash`).
+2. Log in as an administrator and visit **Site administration → Notifications**,
+   or run `php admin/cli/upgrade.php`, to complete the installation.
+
+Either way, after installing, grant the `tool/pluginstash:manage` capability to
+the roles that should use the tool (it is assigned to the Manager archetype by
+default).
 
 ## Usage
 
