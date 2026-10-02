@@ -1,5 +1,5 @@
 <?php
-// This file is part of Moodle - http://moodle.org/
+// This file is part of Moodle - https://moodle.org/
 //
 // Moodle is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -12,14 +12,14 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
+// along with Moodle.  If not, see <https://www.gnu.org/licenses/>.
 
 /**
  * Stream a stashed plugin to the browser as a re-installable zip archive.
  *
  * @package    tool_pluginstash
  * @copyright  2026 Vernon Spain
- * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
+ * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
 require(__DIR__ . '/../../../config.php');
@@ -27,9 +27,9 @@ require_once($CFG->libdir . '/adminlib.php');
 
 require_login();
 require_capability('tool/pluginstash:manage', context_system::instance());
-require_sesskey();
 
 $component = required_param('component', PARAM_COMPONENT);
+require_sesskey();
 
 $returnurl = new moodle_url('/admin/tool/pluginstash/index.php');
 

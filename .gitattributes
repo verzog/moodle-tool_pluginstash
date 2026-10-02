@@ -1,0 +1,3 @@
+# Normalise line endings to LF on checkout and in the repository, so Windows
+# checkouts do not introduce CRLF that fails the Moodle coding-style checks.
+* text=auto eol=lf
