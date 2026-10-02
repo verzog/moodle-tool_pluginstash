@@ -13,13 +13,14 @@ jobs:
   test:
     runs-on: ubuntu-24.04
 
-    # The plugin declares support for Moodle 5.0-5.3 ($plugin->supported = [500, 503]).
-    # 5.3 is still the development series, so it is tracked via the 'main' branch and
-    # allowed to fail (continue-on-error) rather than block the build.
-    continue-on-error: ${{ matrix.moodle-branch == 'main' }}
+    # Only the 5.3dev (main) matrix entry sets experimental; every stable-branch
+    # entry leaves it unset, so this evaluates to false and those jobs stay blocking.
+    continue-on-error: ${{ matrix.experimental || false }}
 
     services:
       postgres:
+        # PostgreSQL 17: Moodle 5.3 requires >=17, and 5.0/5.1/5.2 enforce a lower
+        # minimum, so 17 satisfies every matrix branch. Only started for pgsql jobs.
         image: ${{ matrix.database == 'pgsql' && 'postgres:17' || '' }}
         env:
           POSTGRES_USER: 'postgres'
@@ -28,10 +29,22 @@ jobs:
           - 5432:5432
         options: --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 3
 
+      mysql:
+        image: ${{ matrix.database == 'mysqli' && 'mysql:8.4' || '' }}
+        env:
+          MYSQL_ALLOW_EMPTY_PASSWORD: "true"
+          MYSQL_CHARACTER_SET_SERVER: "utf8mb4"
+          MYSQL_COLLATION_SERVER: "utf8mb4_unicode_ci"
+        ports:
+          - 3306:3306
+        options: --health-cmd="mysqladmin ping" --health-interval 10s --health-timeout 5s --health-retries 3
+
       mariadb:
+        # mariadb and mysqli both use port 3306, but only one is ever started per
+        # job (the images are gated on matrix.database), so there is no clash.
         image: ${{ matrix.database == 'mariadb' && 'mariadb:11' || '' }}
         env:
-          MARIADB_ALLOW_EMPTY_ROOT_PASSWORD: '1'
+          MARIADB_ALLOW_EMPTY_ROOT_PASSWORD: "true"
           MARIADB_CHARACTER_SET_SERVER: "utf8mb4"
           MARIADB_COLLATION_SERVER: "utf8mb4_unicode_ci"
         ports:
@@ -41,14 +54,25 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Branch-aware matrix across the supported range (5.0-5.3), spreading PHP
-        # and database engines rather than testing every combination.
+        php: ['8.2', '8.3', '8.4']
+        # MOODLE_503_STABLE is not cut yet (5.3 LTS releases ~Oct 2026 and
+        # currently lives on main); the non-blocking 5.3dev job below covers it
+        # until then, at which point promote it to a blocking entry here.
+        moodle-branch: ['MOODLE_500_STABLE', 'MOODLE_501_STABLE', 'MOODLE_502_STABLE']
+        database: ['pgsql', 'mysqli', 'mariadb']
+        exclude:
+          # Moodle 5.2 dropped PHP 8.2 (requires 8.3+), so these combos are invalid.
+          - php: '8.2'
+            moodle-branch: 'MOODLE_502_STABLE'
         include:
-          - {moodle-branch: 'MOODLE_500_STABLE', php: '8.2', database: 'pgsql'}
-          - {moodle-branch: 'MOODLE_501_STABLE', php: '8.4', database: 'mariadb'}
-          - {moodle-branch: 'MOODLE_502_STABLE', php: '8.3', database: 'pgsql'}
-          - {moodle-branch: 'MOODLE_502_STABLE', php: '8.4', database: 'mariadb'}
-          - {moodle-branch: 'main', php: '8.3', database: 'pgsql'}  # 5.3 (development)
+          # Early-warning job against 5.3dev (the main branch). Allowed to fail
+          # via continue-on-error: main is a moving target, so a red here flags
+          # upcoming breakage without blocking the PR. Promote to a blocking
+          # MOODLE_503_STABLE entry above once that stable branch is cut.
+          - php: '8.4'
+            moodle-branch: 'main'
+            database: 'pgsql'
+            experimental: true
 
     steps:
       - name: Check out repository code
