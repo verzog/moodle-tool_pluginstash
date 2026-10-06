@@ -25,8 +25,8 @@
 defined('MOODLE_INTERNAL') || die();
 
 $plugin->component = 'tool_pluginstash';
-$plugin->version   = 2026100200;
-$plugin->requires  = 2025041400;
-$plugin->supported = [500, 503];
+$plugin->version   = 2026100600;
+$plugin->requires  = 2025100600;
+$plugin->supported = [501, 503];
 $plugin->maturity  = MATURITY_STABLE;
-$plugin->release   = 'v1.1.3';
+$plugin->release   = 'v1.2.0';

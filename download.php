@@ -24,6 +24,7 @@
 
 require(__DIR__ . '/../../../config.php');
 require_once($CFG->libdir . '/adminlib.php');
+require_once($CFG->libdir . '/filelib.php');
 
 $component = required_param('component', PARAM_COMPONENT);
 
