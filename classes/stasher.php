@@ -190,7 +190,7 @@ class stasher {
      * the plugin manager; tests override it to drive stashing from a fixture tree.
      *
      * @param string $component frankenstyle component name.
-     * @return array{0: string, 1: int}|null [absolute root directory, version], or null if unavailable.
+     * @return array|null [absolute root directory, version], or null if unavailable.
      */
     protected function get_component_source(string $component): ?array {
         $plugin = core_plugin_manager::instance()->get_plugin_info($component);
@@ -308,7 +308,7 @@ class stasher {
      *
      * @param string $dir absolute source directory.
      * @param string $root name of the top-level folder inside the archive.
-     * @return array<string, string> map of archive path to absolute file path.
+     * @return string[] map of archive path to absolute file path.
      */
     protected function build_zip_filelist(string $dir, string $root): array {
         $dir = rtrim($dir, '/');
