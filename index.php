@@ -37,7 +37,10 @@ $stasher = new \tool_pluginstash\stasher();
 
 $enabled = $stasher->is_enabled();
 $addons = $enabled ? $stasher->get_addon_plugins() : [];
-$form = empty($addons) ? null : new \tool_pluginstash\form\stash_form($PAGE->url->out(false), ['addons' => $addons]);
+// Only offer plugins that are not stashed yet, or whose installed version is newer
+// than the stashed copy; up-to-date ones appear in the stashed list below instead.
+$stashable = $stasher->get_stashable_plugins($addons);
+$form = empty($stashable) ? null : new \tool_pluginstash\form\stash_form($PAGE->url->out(false), ['addons' => $stashable]);
 
 // Process the submission before emitting any output so the redirect is a clean
 // post/redirect/get and never hits "headers already sent".
@@ -47,7 +50,7 @@ $form = empty($addons) ? null : new \tool_pluginstash\form\stash_form($PAGE->url
 // are overwritten before the administrator submits.
 if ($form !== null && ($data = $form->get_data())) {
     $selected = [];
-    foreach (array_keys($addons) as $component) {
+    foreach (array_keys($stashable) as $component) {
         $field = 'plugin_' . $component;
         if (!empty($data->$field)) {
             $selected[] = $component;
@@ -66,6 +69,8 @@ if (!$enabled) {
     echo $OUTPUT->notification(get_string('disablednotice', 'tool_pluginstash'), 'info');
 } else if (empty($addons)) {
     echo $OUTPUT->notification(get_string('noaddons', 'tool_pluginstash'), 'info');
+} else if (empty($stashable)) {
+    echo $OUTPUT->notification(get_string('allstashed', 'tool_pluginstash'), 'info');
 } else {
     echo $OUTPUT->box(get_string('stashintro', 'tool_pluginstash', $stasher->get_stash_dir()));
     $form->display();

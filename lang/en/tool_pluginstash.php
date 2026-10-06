@@ -23,6 +23,7 @@
  */
 
 $string['addonplugins'] = 'Add-on plugins';
+$string['allstashed'] = 'All add-on plugins are already stashed at their installed version. A plugin appears here again when a newer version is installed.';
 $string['cli_done'] = 'Done. Restored {$a->restored}, skipped {$a->skipped}, failed {$a->failed}.';
 $string['cli_failed'] = 'Failed to restore {$a->component}: {$a->error}';
 $string['cli_help'] = 'Restore stashed add-on plugins back into the code tree.

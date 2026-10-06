@@ -358,6 +358,55 @@ final class stasher_test extends \advanced_testcase {
     }
 
     /**
+     * get_stashable_plugins() hides up-to-date stashed plugins but offers newer or unstashed ones.
+     *
+     * @return void
+     */
+    public function test_get_stashable_plugins_hides_up_to_date_stash(): void {
+        $this->resetAfterTest();
+        set_config('stashdir', make_request_directory(), 'tool_pluginstash');
+
+        $stasher = new testable_stasher();
+        $stasher->set_source('local_fake', __DIR__ . '/fixtures/fakeplugin', 2026010100);
+        $stasher->stash(['local_fake']);
+
+        $plugin = static function (string $component, int $version): \stdClass {
+            return (object) ['component' => $component, 'versiondisk' => $version];
+        };
+
+        // Same version as the stash: hidden. Not stashed at all: offered.
+        $addons = [
+            'local_fake' => $plugin('local_fake', 2026010100),
+            'local_other' => $plugin('local_other', 2026010100),
+        ];
+        $this->assertSame(['local_other'], array_keys($stasher->get_stashable_plugins($addons)));
+
+        // A newer installed version than the stash: offered again.
+        $addons['local_fake'] = $plugin('local_fake', 2026020100);
+        $this->assertSame(['local_fake', 'local_other'], array_keys($stasher->get_stashable_plugins($addons)));
+    }
+
+    /**
+     * get_stashable_plugins() offers a plugin again if its stashed copy is missing from disk.
+     *
+     * @return void
+     */
+    public function test_get_stashable_plugins_offers_missing_stash_copy(): void {
+        $this->resetAfterTest();
+        $stashdir = make_request_directory();
+        set_config('stashdir', $stashdir, 'tool_pluginstash');
+
+        $source = __DIR__ . '/fixtures/fakeplugin';
+        $stasher = new testable_stasher();
+        $stasher->set_source('local_fake', $source, 2026010100);
+        $stasher->stash(['local_fake']);
+        remove_dir($stashdir . '/' . $stasher->get_relative_dir($source));
+
+        $addons = ['local_fake' => (object) ['component' => 'local_fake', 'versiondisk' => 2026010100]];
+        $this->assertSame(['local_fake'], array_keys($stasher->get_stashable_plugins($addons)));
+    }
+
+    /**
      * Every capability declared in db/access.php has a language string.
      *
      * The roles UI resolves the capability's name via get_string(), so a missing
