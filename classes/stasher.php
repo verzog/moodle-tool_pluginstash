@@ -128,6 +128,33 @@ class stasher {
     }
 
     /**
+     * Filter add-on plugins down to those that still need stashing.
+     *
+     * A plugin is left out when the stash already holds a copy at the installed
+     * version or newer. It is offered again once the installed version is newer
+     * than the stashed copy, or if the stashed copy has gone missing from disk.
+     *
+     * @param \core\plugininfo\base[] $addons add-on plugins keyed by component, from get_addon_plugins().
+     * @return \core\plugininfo\base[] the plugins that are not stashed or have a newer version installed.
+     */
+    public function get_stashable_plugins(array $addons): array {
+        $manifest = $this->read_manifest();
+        $stashdir = $this->get_stash_dir();
+
+        $stashable = [];
+        foreach ($addons as $component => $plugin) {
+            $entry = $manifest[$component] ?? null;
+            $uptodate = $entry !== null && is_dir($stashdir . '/' . $entry['reldir'])
+                && (int) $plugin->versiondisk <= (int) $entry['version'];
+            if ($uptodate) {
+                continue;
+            }
+            $stashable[$component] = $plugin;
+        }
+        return $stashable;
+    }
+
+    /**
      * Copy the given components into the stash directory and record them in the manifest.
      *
      * @param string[] $components frankenstyle component names to stash.
