@@ -10,11 +10,11 @@ Moodle code tree often and want to keep your add-on plugins handy.
 
 ## Requirements
 
-- Moodle 5.0–5.3 (`MOODLE_500_STABLE` through `MOODLE_503_STABLE`)
-- PHP 8.2+
+- Moodle 5.1–5.3 LTS (`MOODLE_501_STABLE` through `MOODLE_503_STABLE`)
+- PHP 8.2–8.4 on Moodle 5.1; PHP 8.3–8.4 on Moodle 5.2 and 5.3
 
-The declared support range is `$plugin->supported = [500, 503]`; older releases
-(pre-5.0) and newer releases (5.4+) are not tested and will report as
+The declared support range is `$plugin->supported = [501, 503]`; older releases
+(5.0 and earlier) and newer releases (5.4+) are not tested and will report as
 unsupported.
 
 The stash directory must live **outside** the Moodle code tree (`$CFG->dirroot`).
