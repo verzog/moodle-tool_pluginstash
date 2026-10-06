@@ -41,6 +41,10 @@ $form = empty($addons) ? null : new \tool_pluginstash\form\stash_form($PAGE->url
 
 // Process the submission before emitting any output so the redirect is a clean
 // post/redirect/get and never hits "headers already sent".
+// Stashing runs inline rather than as a queued adhoc task: this is an admin-only
+// tool for test sites that copies a handful of plugin directories, it has a
+// kill-switch (the "enabled" setting), and the page states that existing copies
+// are overwritten before the administrator submits.
 if ($form !== null && ($data = $form->get_data())) {
     $selected = [];
     foreach (array_keys($addons) as $component) {

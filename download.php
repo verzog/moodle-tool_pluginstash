@@ -26,10 +26,10 @@ require(__DIR__ . '/../../../config.php');
 require_once($CFG->libdir . '/adminlib.php');
 require_once($CFG->libdir . '/filelib.php');
 
+$component = required_param('component', PARAM_COMPONENT);
+
 require_login();
 require_capability('tool/pluginstash:manage', context_system::instance());
-
-$component = required_param('component', PARAM_COMPONENT);
 require_sesskey();
 
 $returnurl = new moodle_url('/admin/tool/pluginstash/index.php');

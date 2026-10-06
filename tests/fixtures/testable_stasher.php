@@ -28,7 +28,7 @@ namespace tool_pluginstash;
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class testable_stasher extends stasher {
-    /** @var array<string, array{0: string, 1: int}> Map of component to [rootdir, version]. */
+    /** @var array Map of component to [rootdir, version]. */
     protected $sources = [];
 
     /**
@@ -47,7 +47,7 @@ class testable_stasher extends stasher {
      * Resolve a component from the registered fixture sources.
      *
      * @param string $component frankenstyle component name.
-     * @return array{0: string, 1: int}|null [absolute root directory, version], or null if unregistered.
+     * @return array|null [absolute root directory, version], or null if unregistered.
      */
     protected function get_component_source(string $component): ?array {
         return $this->sources[$component] ?? null;
