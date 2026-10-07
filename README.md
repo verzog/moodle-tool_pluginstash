@@ -55,6 +55,13 @@ default).
 3. The plugin copies each ticked plugin's directory into the stash directory and
    records it in a `manifest.json`.
 
+The checklist only lists plugins that need stashing. A plugin already stashed at
+its installed version is left out, because it appears in the **Stashed plugins**
+table below the checklist. It is listed again when a newer version is installed,
+so you can refresh the stashed copy, or if its stashed copy has been removed
+from the stash directory. When every add-on is stashed and up to date, the page
+shows a notice instead of the checklist.
+
 The **Enable stashing** setting is a kill-switch: turn it off to lock the tool
 without uninstalling it. The stash directory defaults to a folder inside your
 Moodle data root and can be changed in the plugin settings.
