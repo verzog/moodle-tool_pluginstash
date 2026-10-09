@@ -35,14 +35,21 @@ require_sesskey();
 $returnurl = new moodle_url('/admin/tool/pluginstash/index.php');
 
 $stasher = new \tool_pluginstash\stasher();
-$manifest = $stasher->read_manifest();
-if (!isset($manifest[$component])) {
-    throw new moodle_exception('errornotstashed', 'tool_pluginstash', $returnurl, $component);
-}
-
 $tempdir = make_request_directory();
 $zippath = $tempdir . '/' . $component . '.zip';
-if (!$stasher->zip_component($component, $zippath)) {
+
+if ($component === \tool_pluginstash\stasher::COMPONENT) {
+    // This tool is never stashed; it is zipped straight from the code tree so the
+    // administrator can keep a copy to reinstall if an upgrade removes it.
+    $zipped = $stasher->zip_self($zippath);
+} else {
+    $manifest = $stasher->read_manifest();
+    if (!isset($manifest[$component])) {
+        throw new moodle_exception('errornotstashed', 'tool_pluginstash', $returnurl, $component);
+    }
+    $zipped = $stasher->zip_component($component, $zippath);
+}
+if (!$zipped) {
     throw new moodle_exception('errornotstashed', 'tool_pluginstash', $returnurl, $component);
 }
 

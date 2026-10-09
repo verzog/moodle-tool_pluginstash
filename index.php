@@ -40,7 +40,10 @@ $addons = $enabled ? $stasher->get_addon_plugins() : [];
 // Only offer plugins that are not stashed yet, or whose installed version is newer
 // than the stashed copy; up-to-date ones appear in the stashed list below instead.
 $stashable = $stasher->get_stashable_plugins($addons);
-$form = empty($stashable) ? null : new \tool_pluginstash\form\stash_form($PAGE->url->out(false), ['addons' => $stashable]);
+$form = empty($stashable) ? null : new \tool_pluginstash\form\stash_form(
+    $PAGE->url->out(false),
+    ['addons' => $stashable]
+);
 
 // Process the submission before emitting any output so the redirect is a clean
 // post/redirect/get and never hits "headers already sent".
@@ -76,11 +79,15 @@ if (!$enabled) {
     $form->display();
 }
 
-// The list of already-stashed plugins is a read-only view, shown regardless of
-// whether stashing is currently enabled, with a download link per plugin.
+// The list of already-stashed plugins is shown regardless of whether stashing is
+// enabled, with a download link per plugin. Reinstalling writes to the code tree,
+// so it is only offered while the tool is enabled, to site administrators.
 $stashed = $stasher->read_manifest();
 if (!empty($stashed)) {
     echo $OUTPUT->heading(get_string('stashedplugins', 'tool_pluginstash'), 3);
+
+    $canreinstall = $enabled && has_capability('moodle/site:config', context_system::instance());
+    $statuses = $canreinstall ? $stasher->get_reinstall_statuses() : [];
 
     $table = new html_table();
     $table->head = [
@@ -88,18 +95,47 @@ if (!empty($stashed)) {
         get_string('stashedon', 'tool_pluginstash'),
         get_string('download'),
     ];
+    if ($canreinstall) {
+        $table->head[] = get_string('reinstall', 'tool_pluginstash');
+    }
     foreach ($stashed as $entry) {
         $url = new moodle_url('/admin/tool/pluginstash/download.php', [
             'component' => $entry['component'],
             'sesskey'   => sesskey(),
         ]);
-        $table->data[] = [
+        $row = [
             s($entry['component']),
             userdate($entry['stashed'], '%d/%m/%Y'),
             html_writer::link($url, get_string('downloadzip', 'tool_pluginstash')),
         ];
+        if ($canreinstall) {
+            $status = $statuses[$entry['component']];
+            if ($status === \tool_pluginstash\stasher::REINSTALL_READY) {
+                $reinstallurl = new moodle_url('/admin/tool/pluginstash/reinstall.php', ['component' => $entry['component']]);
+                $row[] = $OUTPUT->single_button($reinstallurl, get_string('reinstall', 'tool_pluginstash'), 'get');
+            } else {
+                $row[] = get_string('reinstall_' . $status, 'tool_pluginstash');
+            }
+        }
+        $table->data[] = $row;
     }
     echo html_writer::table($table);
+
+    $readycount = count(array_keys($statuses, \tool_pluginstash\stasher::REINSTALL_READY, true));
+    if ($readycount > 1) {
+        $allurl = new moodle_url('/admin/tool/pluginstash/reinstall.php', ['all' => 1]);
+        echo $OUTPUT->single_button($allurl, get_string('reinstallall', 'tool_pluginstash', $readycount), 'get');
+    }
 }
+
+// Plugin Stash cannot stash itself, so offer a copy to keep in case an upgrade
+// removes it; installing that zip brings this page and the stash back.
+echo $OUTPUT->heading(get_string('selfrecovery', 'tool_pluginstash'), 3);
+echo $OUTPUT->box(get_string('selfrecovery_desc', 'tool_pluginstash'));
+$selfurl = new moodle_url('/admin/tool/pluginstash/download.php', [
+    'component' => \tool_pluginstash\stasher::COMPONENT,
+    'sesskey'   => sesskey(),
+]);
+echo $OUTPUT->single_button($selfurl, get_string('downloadself', 'tool_pluginstash'), 'get');
 
 echo $OUTPUT->footer();

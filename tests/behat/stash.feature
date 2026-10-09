@@ -49,3 +49,36 @@ Feature: Manage the Plugin Stash tool
     When I visit "/admin/tool/pluginstash/index.php"
     Then I should see "Plugin stashing is currently disabled"
     And "Download as zip" "link" should exist
+
+  Scenario: Plugin Stash offers a copy of itself for recovery after an upgrade
+    When I visit "/admin/tool/pluginstash/index.php"
+    Then I should see "If an upgrade removes Plugin Stash"
+    And "Download Plugin Stash as zip" "button" should exist
+
+  Scenario: A stashed plugin missing from the site can be reinstalled after confirmation
+    Given the plugin "local_behatfake" is stashed as "local/behatfake"
+    And the following config values are set as admin:
+      | enabled | 1 | tool_pluginstash |
+    When I visit "/admin/tool/pluginstash/index.php"
+    And I press "Reinstall"
+    Then I should see "Copy these plugins from the stash back into the Moodle code tree?"
+    And I should see "local_behatfake"
+    And "Yes, reinstall 1 plugin(s)" "button" should exist
+    And I press "Cancel"
+    And I should see "Stashed plugins"
+
+  Scenario: Reinstalling is not offered when installing plugins from the web is turned off
+    Given the plugin "local_behatfake" is stashed as "local/behatfake"
+    And the following config values are set as admin:
+      | enabled                 | 1 | tool_pluginstash |
+      | disableupdateautodeploy | 1 |                  |
+    When I visit "/admin/tool/pluginstash/index.php"
+    Then I should see "Not available: installing plugins from the web is turned off on this site."
+    And "Reinstall" "button" should not exist
+
+  Scenario: Reinstalling is not offered while stashing is disabled
+    Given the plugin "local_behatfake" is stashed as "local/behatfake"
+    And the following config values are set as admin:
+      | enabled | 0 | tool_pluginstash |
+    When I visit "/admin/tool/pluginstash/index.php"
+    Then "Reinstall" "button" should not exist

@@ -17,6 +17,7 @@
 namespace tool_pluginstash;
 
 use PHPUnit\Framework\Attributes\CoversClass;
+use PHPUnit\Framework\Attributes\DataProvider;
 
 defined('MOODLE_INTERNAL') || die();
 
@@ -404,6 +405,250 @@ final class stasher_test extends \advanced_testcase {
 
         $addons = ['local_fake' => (object) ['component' => 'local_fake', 'versiondisk' => 2026010100]];
         $this->assertSame(['local_fake'], array_keys($stasher->get_stashable_plugins($addons)));
+    }
+
+    /**
+     * Stash the fixture plugin as local_fake at a given version, for the reinstall tests.
+     *
+     * @param int $version version to record in the manifest.
+     * @return testable_stasher stasher with a temporary target root for reinstalls.
+     */
+    private function stash_fake_for_reinstall(int $version = 2026010100): testable_stasher {
+        set_config('stashdir', make_request_directory(), 'tool_pluginstash');
+
+        $stasher = new testable_stasher();
+        $stasher->set_source('local_fake', __DIR__ . '/fixtures/fakeplugin', $version);
+        $stasher->stash(['local_fake']);
+        $stasher->set_target_root(make_request_directory());
+        return $stasher;
+    }
+
+    /**
+     * Data provider for test_get_reinstall_statuses().
+     *
+     * @return array test cases of [version on disk, version in database, expected status].
+     */
+    public static function reinstall_status_provider(): array {
+        return [
+            'Never installed' => [null, null, stasher::REINSTALL_READY],
+            'Missing from disk, same version in database' => [null, 2026010100, stasher::REINSTALL_READY],
+            'Missing from disk, older version in database' => [null, 2025010100, stasher::REINSTALL_READY],
+            'Missing from disk, newer version in database' => [null, 2026020100, stasher::REINSTALL_DOWNGRADE],
+            'Older version on disk' => [2025010100, 2025010100, stasher::REINSTALL_READY],
+            'Same version on disk' => [2026010100, 2026010100, stasher::REINSTALL_CURRENT],
+            'Newer version on disk' => [2026020100, 2026020100, stasher::REINSTALL_CURRENT],
+        ];
+    }
+
+    /**
+     * get_reinstall_statuses() compares the stashed version with the code tree and database.
+     *
+     * @param int|null $diskversion version in the code tree, or null if missing.
+     * @param int|null $dbversion version in the database, or null if never installed.
+     * @param string $expected expected REINSTALL_* status.
+     * @return void
+     */
+    #[DataProvider('reinstall_status_provider')]
+    public function test_get_reinstall_statuses(?int $diskversion, ?int $dbversion, string $expected): void {
+        $this->resetAfterTest();
+        $stasher = $this->stash_fake_for_reinstall();
+        $stasher->set_installed('local_fake', $diskversion, $dbversion);
+
+        $this->assertSame(['local_fake' => $expected], $stasher->get_reinstall_statuses());
+    }
+
+    /**
+     * Reinstalling is refused when the site turns off installing plugins from the web.
+     *
+     * @return void
+     */
+    public function test_get_reinstall_statuses_respects_disableupdateautodeploy(): void {
+        global $CFG;
+        $this->resetAfterTest();
+        $stasher = $this->stash_fake_for_reinstall();
+
+        $CFG->disableupdateautodeploy = true;
+        $this->assertSame(['local_fake' => stasher::REINSTALL_DISABLED], $stasher->get_reinstall_statuses());
+    }
+
+    /**
+     * A plugin type the site does not know cannot be reinstalled.
+     *
+     * @return void
+     */
+    public function test_get_reinstall_statuses_unknown_type(): void {
+        $this->resetAfterTest();
+        $stasher = $this->stash_fake_for_reinstall();
+        $stasher->set_target_root(null);
+
+        $this->assertSame(['local_fake' => stasher::REINSTALL_UNKNOWNTYPE], $stasher->get_reinstall_statuses());
+    }
+
+    /**
+     * A stashed copy that has gone from the stash directory cannot be reinstalled.
+     *
+     * @return void
+     */
+    public function test_get_reinstall_statuses_missing_stash_copy(): void {
+        $this->resetAfterTest();
+        $stasher = $this->stash_fake_for_reinstall();
+        remove_dir($stasher->get_stash_dir() . '/' . $stasher->get_relative_dir(__DIR__ . '/fixtures/fakeplugin'));
+
+        $this->assertSame(['local_fake' => stasher::REINSTALL_MISSING], $stasher->get_reinstall_statuses());
+        $this->assertSame([], $stasher->get_reinstallable_components());
+    }
+
+    /**
+     * reinstall() copies the stashed plugin into its directory and replaces an older copy.
+     *
+     * @return void
+     */
+    public function test_reinstall_copies_plugin_into_target(): void {
+        $this->resetAfterTest();
+        $stasher = $this->stash_fake_for_reinstall();
+        $this->assertSame(['local_fake'], $stasher->get_reinstallable_components());
+
+        $target = (new \ReflectionMethod($stasher, 'get_reinstall_target'))->invoke($stasher, 'local_fake');
+        make_writable_directory($target);
+        file_put_contents($target . '/stale.php', '<?php // Stale.');
+
+        $stasher->reinstall('local_fake');
+
+        $this->assertFileExists($target . '/lib.php');
+        $this->assertFileExists($target . '/sub/note.txt');
+        $this->assertFileDoesNotExist($target . '/stale.php');
+    }
+
+    /**
+     * reinstall() refuses a plugin whose reinstall would be a downgrade.
+     *
+     * @return void
+     */
+    public function test_reinstall_refuses_downgrade(): void {
+        $this->resetAfterTest();
+        $stasher = $this->stash_fake_for_reinstall();
+        $stasher->set_installed('local_fake', null, 2026020100);
+
+        $this->expectException(\moodle_exception::class);
+        $stasher->reinstall('local_fake');
+    }
+
+    /**
+     * The reinstall target comes from the site's plugin type folders, never the manifest.
+     *
+     * @return void
+     */
+    public function test_get_reinstall_target_uses_plugin_type_root(): void {
+        global $CFG;
+        $this->resetAfterTest();
+        $stasher = new stasher();
+        $method = new \ReflectionMethod($stasher, 'get_reinstall_target');
+
+        $this->assertSame($CFG->dirroot . '/local/fake', $method->invoke($stasher, 'local_fake'));
+        $this->assertSame($CFG->dirroot . '/admin/tool/fake', $method->invoke($stasher, 'tool_fake'));
+        $this->assertNull($method->invoke($stasher, 'core'));
+        $this->assertNull($method->invoke($stasher, 'notatype_fake'));
+    }
+
+    /**
+     * Stash a temporary local_fake plugin whose version.php has the given body.
+     *
+     * @param string $versionphp PHP statements for version.php, after the opening tag.
+     * @return testable_stasher stasher with a temporary target root for reinstalls.
+     */
+    private function stash_fake_with_version_php(string $versionphp): testable_stasher {
+        set_config('stashdir', make_request_directory(), 'tool_pluginstash');
+
+        $source = make_request_directory() . '/fake';
+        make_writable_directory($source);
+        file_put_contents($source . '/version.php', "<?php\n" . $versionphp . "\n");
+
+        $stasher = new testable_stasher();
+        $stasher->set_source('local_fake', $source, 2026010100);
+        $stasher->stash(['local_fake']);
+        $stasher->set_target_root(make_request_directory());
+        return $stasher;
+    }
+
+    /**
+     * A stashed copy that does not support this Moodle version is not offered.
+     *
+     * @return void
+     */
+    public function test_get_reinstall_statuses_checks_core_compatibility(): void {
+        global $CFG;
+        $this->resetAfterTest();
+
+        $stasher = $this->stash_fake_with_version_php('$plugin->requires = ' . ($CFG->version + 1) . ';');
+        $this->assertSame(['local_fake' => stasher::REINSTALL_INCOMPATIBLE], $stasher->get_reinstall_statuses());
+
+        $stasher = $this->stash_fake_with_version_php('$plugin->incompatible = ' . $CFG->branch . ';');
+        $this->assertSame(['local_fake' => stasher::REINSTALL_INCOMPATIBLE], $stasher->get_reinstall_statuses());
+
+        $stasher = $this->stash_fake_with_version_php(
+            '$plugin->requires = ' . $CFG->version . '; $plugin->incompatible = ' . ($CFG->branch + 1) . ';'
+        );
+        $this->assertSame(['local_fake' => stasher::REINSTALL_READY], $stasher->get_reinstall_statuses());
+    }
+
+    /**
+     * An existing plugin directory that cannot be removed in full blocks the reinstall.
+     *
+     * @return void
+     */
+    public function test_get_reinstall_statuses_requires_removable_existing_copy(): void {
+        $this->resetAfterTest();
+        $stasher = $this->stash_fake_for_reinstall();
+        $target = (new \ReflectionMethod($stasher, 'get_reinstall_target'))->invoke($stasher, 'local_fake');
+        make_writable_directory($target);
+
+        $stasher->set_removable(false);
+        $this->assertSame(['local_fake' => stasher::REINSTALL_NOTWRITABLE], $stasher->get_reinstall_statuses());
+
+        $stasher->set_removable(null);
+        $this->assertSame(['local_fake' => stasher::REINSTALL_READY], $stasher->get_reinstall_statuses());
+    }
+
+    /**
+     * The self-recovery file list leaves out hidden entries such as .git.
+     *
+     * @return void
+     */
+    public function test_build_zip_filelist_can_skip_hidden_entries(): void {
+        $this->resetAfterTest();
+        $stasher = new stasher();
+
+        $dir = make_request_directory();
+        file_put_contents($dir . '/version.php', '<?php');
+        make_writable_directory($dir . '/.git');
+        file_put_contents($dir . '/.git/config', '[remote] url = https://token@example.com/x.git');
+        file_put_contents($dir . '/.env', 'SECRET=1');
+
+        $method = new \ReflectionMethod($stasher, 'build_zip_filelist');
+        $this->assertSame(['plugin/version.php'], array_keys($method->invoke($stasher, $dir, 'plugin', true)));
+        $this->assertEqualsCanonicalizing(
+            ['plugin/version.php', 'plugin/.git/config', 'plugin/.env'],
+            array_keys($method->invoke($stasher, $dir, 'plugin'))
+        );
+    }
+
+    /**
+     * zip_self() packs this tool from the code tree under its own folder.
+     *
+     * @return void
+     */
+    public function test_zip_self_builds_installable_zip(): void {
+        $this->resetAfterTest();
+        $stasher = new stasher();
+
+        $zippath = make_request_directory() . '/self.zip';
+        $this->assertTrue($stasher->zip_self($zippath));
+
+        $zip = new \ZipArchive();
+        $this->assertTrue($zip->open($zippath) === true);
+        $this->assertNotFalse($zip->locateName('pluginstash/version.php'));
+        $this->assertNotFalse($zip->locateName('pluginstash/classes/stasher.php'));
+        $zip->close();
     }
 
     /**
