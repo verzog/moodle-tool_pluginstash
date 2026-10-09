@@ -37,6 +37,27 @@ class stasher {
     /** @var string Name of the manifest file written into the stash directory. */
     const MANIFEST_FILE = 'manifest.json';
 
+    /** @var string Reinstall status: the stashed copy can be copied back into the code tree. */
+    const REINSTALL_READY = 'ready';
+
+    /** @var string Reinstall status: the code tree already holds the stashed version or newer. */
+    const REINSTALL_CURRENT = 'current';
+
+    /** @var string Reinstall status: the site has a newer version installed, so this would be a downgrade. */
+    const REINSTALL_DOWNGRADE = 'downgrade';
+
+    /** @var string Reinstall status: the stashed copy is missing from the stash directory. */
+    const REINSTALL_MISSING = 'missing';
+
+    /** @var string Reinstall status: the plugin type is not known to this site. */
+    const REINSTALL_UNKNOWNTYPE = 'unknowntype';
+
+    /** @var string Reinstall status: the web server cannot write to the plugin's directory. */
+    const REINSTALL_NOTWRITABLE = 'notwritable';
+
+    /** @var string Reinstall status: installing plugin code from the web is disabled on this site. */
+    const REINSTALL_DISABLED = 'disabled';
+
     /**
      * Whether the stash action is currently enabled.
      *
@@ -267,6 +288,142 @@ class stasher {
     }
 
     /**
+     * Work out whether each stashed plugin can be reinstalled from the web UI.
+     *
+     * @return string[] map of component name to one of the REINSTALL_* constants.
+     */
+    public function get_reinstall_statuses(): array {
+        global $CFG;
+
+        $stashdir = $this->get_stash_dir();
+        $statuses = [];
+        foreach ($this->read_manifest() as $component => $entry) {
+            [$diskversion, $dbversion] = $this->get_installed_versions($component);
+            $stashedversion = (int) $entry['version'];
+            $target = $this->get_reinstall_target($component);
+
+            if (!is_dir($stashdir . '/' . $entry['reldir'])) {
+                $status = self::REINSTALL_MISSING;
+            } else if ($diskversion !== null && $diskversion >= $stashedversion) {
+                $status = self::REINSTALL_CURRENT;
+            } else if ($dbversion !== null && $dbversion > $stashedversion) {
+                // Moodle refuses to run with code older than the version recorded in
+                // the database, so copying this back would lock the site.
+                $status = self::REINSTALL_DOWNGRADE;
+            } else if (!empty($CFG->disableupdateautodeploy)) {
+                // Respect the same switch that turns off Moodle's own "Install plugins".
+                $status = self::REINSTALL_DISABLED;
+            } else if ($target === null) {
+                $status = self::REINSTALL_UNKNOWNTYPE;
+            } else if (!is_writable(dirname($target)) || (is_dir($target) && !is_writable($target))) {
+                $status = self::REINSTALL_NOTWRITABLE;
+            } else {
+                $status = self::REINSTALL_READY;
+            }
+            $statuses[$component] = $status;
+        }
+        return $statuses;
+    }
+
+    /**
+     * Copy a stashed plugin back into the code tree so Notifications can install it.
+     *
+     * @param string $component frankenstyle component name.
+     * @return void
+     * @throws \moodle_exception if the plugin cannot be reinstalled.
+     */
+    public function reinstall(string $component): void {
+        $status = $this->get_reinstall_statuses()[$component] ?? self::REINSTALL_MISSING;
+        if ($status !== self::REINSTALL_READY) {
+            throw new \moodle_exception(
+                'errorreinstall',
+                self::COMPONENT,
+                '',
+                (object) [
+                    'component' => $component,
+                    'reason' => get_string('reinstall_' . $status, self::COMPONENT),
+                ]
+            );
+        }
+
+        $target = $this->get_reinstall_target($component);
+        $this->with_lock(function () use ($component, $target): void {
+            $reldir = $this->read_manifest()[$component]['reldir'];
+            $this->replace_dir($this->get_stash_dir() . '/' . $reldir, $target);
+        });
+        core_plugin_manager::reset_caches();
+    }
+
+    /**
+     * Return the stashed components that can be reinstalled right now.
+     *
+     * @return string[] frankenstyle component names.
+     */
+    public function get_reinstallable_components(): array {
+        return array_keys(array_filter(
+            $this->get_reinstall_statuses(),
+            static fn(string $status): bool => $status === self::REINSTALL_READY
+        ));
+    }
+
+    /**
+     * Return the version of a component in the code tree and the version recorded in the database.
+     *
+     * This is a seam: tests override it to simulate installed and missing plugins.
+     *
+     * @param string $component frankenstyle component name.
+     * @return array [version on disk or null, version in the database or null].
+     */
+    protected function get_installed_versions(string $component): array {
+        $diskversion = null;
+        $plugin = core_plugin_manager::instance()->get_plugin_info($component);
+        if ($plugin !== null && !empty($plugin->rootdir) && is_dir($plugin->rootdir) && !empty($plugin->versiondisk)) {
+            $diskversion = (int) $plugin->versiondisk;
+        }
+        $dbversion = get_config($component, 'version');
+        return [$diskversion, ($dbversion === false) ? null : (int) $dbversion];
+    }
+
+    /**
+     * Return the directory a component belongs in, based on its plugin type.
+     *
+     * The path comes from the site's plugin types, never from the manifest, so a
+     * tampered manifest cannot direct a reinstall elsewhere in the file system.
+     * This is a seam: tests override it to reinstall into a temporary directory.
+     *
+     * @param string $component frankenstyle component name.
+     * @return string|null absolute plugin directory, or null if the plugin type is unknown.
+     */
+    protected function get_reinstall_target(string $component): ?string {
+        [$type, $name] = \core_component::normalize_component($component);
+        if ($type === 'core' || empty($name)) {
+            return null;
+        }
+        $root = core_plugin_manager::instance()->get_plugintype_root($type);
+        return is_string($root) ? $root . '/' . $name : null;
+    }
+
+    /**
+     * Build a zip archive of this tool itself, from the code tree.
+     *
+     * Plugin Stash is never stashed, so this is how an administrator keeps a copy
+     * to reinstall through "Install plugins" if an upgrade removes it.
+     *
+     * @param string $zippath absolute path of the zip file to create.
+     * @return bool true on success.
+     * @throws \moodle_exception if the archive cannot be written.
+     */
+    public function zip_self(string $zippath): bool {
+        $dir = \core_component::get_component_directory(self::COMPONENT);
+        $files = $this->build_zip_filelist($dir, basename($dir));
+        if (empty($files)) {
+            return false;
+        }
+        $this->write_zip($files, $zippath, self::COMPONENT);
+        return true;
+    }
+
+    /**
      * Read the stash manifest.
      *
      * @return array manifest entries keyed by component; empty if none exists.
@@ -320,12 +477,25 @@ class stasher {
                 return false;
             }
 
-            $packer = get_file_packer('application/zip');
-            if ($packer->archive_to_pathname($files, $zippath) !== true) {
-                throw new \moodle_exception('errorzipfailed', 'tool_pluginstash', '', $component);
-            }
+            $this->write_zip($files, $zippath, $component);
             return true;
         });
+    }
+
+    /**
+     * Write a zip archive from an archive-path => local-path map.
+     *
+     * @param string[] $files map of archive path to absolute file path.
+     * @param string $zippath absolute path of the zip file to create.
+     * @param string $component component being archived, for the error message.
+     * @return void
+     * @throws \moodle_exception if the archive cannot be written.
+     */
+    protected function write_zip(array $files, string $zippath, string $component): void {
+        $packer = get_file_packer('application/zip');
+        if ($packer->archive_to_pathname($files, $zippath) !== true) {
+            throw new \moodle_exception('errorzipfailed', 'tool_pluginstash', '', $component);
+        }
     }
 
     /**

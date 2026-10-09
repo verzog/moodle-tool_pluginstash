@@ -72,6 +72,54 @@ top-level folder, so it can be re-installed through **Site administration →
 Plugins → Install plugins**. This list (and the download links) stay available
 even when stashing is disabled, since downloading is read-only.
 
+### Reinstalling (web UI)
+
+When stashing is enabled, the **Stashed plugins** table has a **Reinstall**
+column for site administrators (it needs `moodle/site:config` as well as
+`tool/pluginstash:manage`, just like Moodle's own **Install plugins**).
+
+1. After an upgrade or rebuild has removed some add-on plugins, open the Plugin
+   Stash page.
+2. Choose **Reinstall** next to a plugin, or **Reinstall all N available
+   plugins** below the table.
+3. Confirm with **Yes, reinstall**. The stashed copy is copied back into the
+   Moodle code tree, replacing any copy already there, and you are taken to
+   **Notifications** to finish the install.
+
+Where a plugin cannot be reinstalled, the column says why instead:
+
+- **Installed** — the code tree already has the stashed version or newer.
+- **The site already has a newer version** — the database records a newer
+  version than the stash, and Moodle does not allow downgrades.
+- **Installing plugins from the web is turned off** — the site sets
+  `$CFG->disableupdateautodeploy`, which also turns off **Install plugins**.
+- **The web server cannot write to this plugin's folder** — the code tree is
+  read-only to the web server. Use the **Download as zip** link on another
+  site, or the CLI restore below.
+
+### If an upgrade removes Plugin Stash itself
+
+Plugin Stash does not stash itself: it has to be installed to bring your other
+plugins back, so it cannot be restored from its own stash. If a site upgrade
+replaces the whole code tree, Plugin Stash disappears along with the other
+add-ons and its menu item goes with it. Your stash and settings are kept,
+because they live in the Moodle data root and the database.
+
+To recover without server access:
+
+1. **Before you upgrade**, open the Plugin Stash page and choose **Download
+   Plugin Stash as zip** under **If an upgrade removes Plugin Stash**. Keep the
+   zip on your computer. (A release zip from GitHub works too.)
+2. After the upgrade, go to **Site administration → Plugins → Install plugins**
+   and install that zip, then complete the upgrade in **Notifications**.
+3. Open **Site administration → Plugins → Plugin Stash** again and use
+   **Reinstall** for your other plugins.
+
+Both steps need a site that allows installing plugins from the web (the code
+tree writable by the web server and `$CFG->disableupdateautodeploy` not set).
+If your host does not allow that, ask them to keep `admin/tool/pluginstash` in
+the code they deploy.
+
 ### Restoring (CLI)
 
 After you have rebuilt or upgraded the code tree, and **before** you run
@@ -88,16 +136,13 @@ Useful options:
 - `--overwrite` — overwrite destination directories that already exist.
 - `--help` — full help.
 
-Restore is CLI-only by design: it must run before Moodle boots the plugins, so
-it cannot live in the web UI.
+The CLI restore is for administrators with server access. It runs before
+Notifications, so the plugins are back in place before the upgrade checks them.
 
 > **Prerequisite:** `restore.php` is part of this plugin, so this plugin must
-> itself be present in the rebuilt code tree before you can restore. It excludes
-> itself from stashing precisely because you cannot bootstrap the restore script
-> from a stash it would have to already be running to unpack. Keep
-> `admin/tool/pluginstash` in your project's version control (or reinstall it
-> from the Moodle plugins directory) as the first step after a rebuild; then run
-> the command above to restore the remaining add-on plugins.
+> itself be present in the rebuilt code tree before you can restore. Keep
+> `admin/tool/pluginstash` in your project's version control, or reinstall it
+> from its zip as described above, before running the command.
 
 ## Licence
 
