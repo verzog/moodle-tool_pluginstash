@@ -25,8 +25,12 @@ would delete the stash along with the code it is meant to protect.
 
 ### From a ZIP (web UI)
 
-1. Download the plugin ZIP (from a release, or from the **Download as zip** link
-   on another site's stash page).
+1. Download the plugin ZIP: the `tool_pluginstash-vX.Y.Z.zip` attached to a
+   [GitHub release](https://github.com/verzog/moodle-tool_pluginstash/releases),
+   or **Download Plugin Stash as zip** on another site's Plugin Stash page. If
+   you use GitHub's **Source code (zip)** instead, its folder is not named
+   `pluginstash`: on the install page, open **Show more…** and enter
+   `pluginstash` in **Rename the root directory**.
 2. Go to **Site administration → Plugins → Install plugins**.
 3. Drag the ZIP into the installer, or choose it with the file picker, and
    follow the prompts to **Install plugin from the ZIP file**.
@@ -112,7 +116,8 @@ To recover without server access:
 
 1. **Before you upgrade**, open the Plugin Stash page and choose **Download
    Plugin Stash as zip** under **If an upgrade removes Plugin Stash**. Keep the
-   zip on your computer. (A release zip from GitHub works too.)
+   zip on your computer. (The `tool_pluginstash-vX.Y.Z.zip` from a GitHub
+   release works too.)
 2. After the upgrade, go to **Site administration → Plugins → Install plugins**
    and install that zip, then complete the upgrade in **Notifications**.
 3. Open **Site administration → Plugins → Plugin Stash** again and use
@@ -146,6 +151,14 @@ Notifications, so the plugins are back in place before the upgrade checks them.
 > itself be present in the rebuilt code tree before you can restore. Keep
 > `admin/tool/pluginstash` in your project's version control, or reinstall it
 > from its zip as described above, before running the command.
+
+## Releasing
+
+Publishing a GitHub release whose tag matches `$plugin->release` in
+`version.php` (for example `v1.3.0`) runs the **Release zip** workflow. It
+builds `tool_pluginstash-v1.3.0.zip`, with the plugin in a `pluginstash/`
+folder and without development files, and attaches it to the release. If the
+tag and `version.php` disagree, the workflow fails and nothing is attached.
 
 ## Licence
 
