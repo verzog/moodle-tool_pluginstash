@@ -2,8 +2,9 @@
 
 A test/dev-Moodle convenience tool. It lists the non-core (add-on) plugins
 installed on a site as a checklist and copies the ticked ones to a **stash
-directory outside the code tree**. A CLI script copies them back after an
-upgrade or rebuild, before you run Notifications.
+directory outside the code tree**. After an upgrade or rebuild, you can put them
+back from the web UI with **Reinstall**, or from the command line with a CLI
+script, and then finish in Notifications.
 
 This is intended for throwaway test and development sites where you rebuild the
 Moodle code tree often and want to keep your add-on plugins handy.
@@ -34,13 +35,13 @@ would delete the stash along with the code it is meant to protect.
 2. Go to **Site administration → Plugins → Install plugins**.
 3. Drag the ZIP into the installer, or choose it with the file picker, and
    follow the prompts to **Install plugin from the ZIP file**.
-4. Moodle unpacks it to `admin/tool/pluginstash` and runs the upgrade; complete
-   the upgrade when prompted.
+4. Moodle unpacks it to `public/admin/tool/pluginstash` and runs the upgrade;
+   complete the upgrade when prompted.
 
 ### Manually (unzip into the code tree)
 
-1. Unzip the plugin so its contents land in `admin/tool/pluginstash` under your
-   Moodle code tree (the directory must be named `pluginstash`).
+1. Unzip the plugin so its contents land in `public/admin/tool/pluginstash`
+   under your Moodle code tree (the directory must be named `pluginstash`).
 2. Log in as an administrator and visit **Site administration → Notifications**,
    or run `php admin/cli/upgrade.php`, to complete the installation.
 
@@ -125,8 +126,8 @@ To recover without server access:
 
 Both steps need a site that allows installing plugins from the web (the code
 tree writable by the web server and `$CFG->disableupdateautodeploy` not set).
-If your host does not allow that, ask them to keep `admin/tool/pluginstash` in
-the code they deploy.
+If your host does not allow that, ask them to keep
+`public/admin/tool/pluginstash` in the code they deploy.
 
 ### Restoring (CLI)
 
@@ -134,7 +135,7 @@ After you have rebuilt or upgraded the code tree, and **before** you run
 Notifications:
 
 ```sh
-php admin/tool/pluginstash/cli/restore.php --overwrite
+php public/admin/tool/pluginstash/cli/restore.php --overwrite
 ```
 
 Useful options:
@@ -149,7 +150,7 @@ Notifications, so the plugins are back in place before the upgrade checks them.
 
 > **Prerequisite:** `restore.php` is part of this plugin, so this plugin must
 > itself be present in the rebuilt code tree before you can restore. Keep
-> `admin/tool/pluginstash` in your project's version control, or reinstall it
+> `public/admin/tool/pluginstash` in your project's version control, or reinstall it
 > from its zip as described above, before running the command.
 
 ## Releasing
@@ -159,6 +160,28 @@ Publishing a GitHub release whose tag matches `$plugin->release` in
 builds `tool_pluginstash-v1.3.0.zip`, with the plugin in a `pluginstash/`
 folder and without development files, and attaches it to the release. If the
 tag and `version.php` disagree, the workflow fails and nothing is attached.
+
+## Changelog
+
+### v1.3.0 (09/10/2026)
+
+- **Reinstall from the web UI.** The Stashed plugins table has a Reinstall
+  button for each plugin, plus **Reinstall all** when several are available.
+  After you confirm, the stashed copy goes back into the code tree and you
+  finish the install in Notifications. Where a plugin cannot be reinstalled,
+  the table says why.
+- **Recovery when an upgrade removes Plugin Stash.** **Download Plugin Stash as
+  zip** gives you a copy to install through Install plugins, with no server
+  access needed. Your stash and settings are kept.
+- **Release zips.** Each GitHub release has an installable
+  `tool_pluginstash-vX.Y.Z.zip` attached automatically.
+- Paths in this README now use the `public/` layout of Moodle 5.1 and later.
+
+### v1.2.1
+
+- The stash checklist only lists plugins that need stashing.
+- Supports Moodle 5.1 to 5.3 LTS.
+- Fixed the download link failing because `filelib.php` was not loaded.
 
 ## Licence
 
