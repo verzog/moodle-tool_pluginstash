@@ -1,0 +1,44 @@
+name: Release zip
+
+# When a release is published, build an installable zip and attach it to the
+# release. The zip holds the plugin under a "pluginstash/" folder, which is the
+# name Moodle's "Install plugins" page expects, so no renaming is needed.
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  zip:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Check out the release tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
+
+      - name: Check the tag matches version.php
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          release=$(grep -oP "^\\\$plugin->release\s*=\s*'\K[^']+" version.php)
+          if [ "$release" != "$TAG" ]; then
+            echo "::error::Tag $TAG does not match \$plugin->release '$release' in version.php."
+            exit 1
+          fi
+
+      - name: Build the zip
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        # Git archive honours export-ignore in .gitattributes, so development-only
+        # files such as .github and tests are left out.
+        run: git archive --format=zip --prefix=pluginstash/ -o "tool_pluginstash-$TAG.zip" HEAD
+
+      - name: Attach the zip to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: gh release upload "$TAG" "tool_pluginstash-$TAG.zip" --clobber
