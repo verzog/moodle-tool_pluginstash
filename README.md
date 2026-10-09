@@ -91,10 +91,13 @@ Where a plugin cannot be reinstalled, the column says why instead:
 - **Installed** — the code tree already has the stashed version or newer.
 - **The site already has a newer version** — the database records a newer
   version than the stash, and Moodle does not allow downgrades.
+- **The stashed version does not support this version of Moodle** — its
+  `version.php` requires a newer Moodle, or marks this Moodle branch as
+  incompatible, so Notifications would refuse to continue with it installed.
 - **Installing plugins from the web is turned off** — the site sets
   `$CFG->disableupdateautodeploy`, which also turns off **Install plugins**.
-- **The web server cannot write to this plugin's folder** — the code tree is
-  read-only to the web server. Use the **Download as zip** link on another
+- **The web server cannot write to this plugin's folder** — the code tree, or
+  part of an existing copy of the plugin, is read-only to the web server. Use the **Download as zip** link on another
   site, or the CLI restore below.
 
 ### If an upgrade removes Plugin Stash itself

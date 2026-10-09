@@ -46,6 +46,9 @@ class stasher {
     /** @var string Reinstall status: the site has a newer version installed, so this would be a downgrade. */
     const REINSTALL_DOWNGRADE = 'downgrade';
 
+    /** @var string Reinstall status: the stashed copy does not support this Moodle version. */
+    const REINSTALL_INCOMPATIBLE = 'incompatible';
+
     /** @var string Reinstall status: the stashed copy is missing from the stash directory. */
     const REINSTALL_MISSING = 'missing';
 
@@ -310,12 +313,15 @@ class stasher {
                 // Moodle refuses to run with code older than the version recorded in
                 // the database, so copying this back would lock the site.
                 $status = self::REINSTALL_DOWNGRADE;
+            } else if (!$this->is_core_compatible($stashdir . '/' . $entry['reldir'])) {
+                // Notifications would refuse to continue with it in the code tree.
+                $status = self::REINSTALL_INCOMPATIBLE;
             } else if (!empty($CFG->disableupdateautodeploy)) {
                 // Respect the same switch that turns off Moodle's own "Install plugins".
                 $status = self::REINSTALL_DISABLED;
             } else if ($target === null) {
                 $status = self::REINSTALL_UNKNOWNTYPE;
-            } else if (!is_writable(dirname($target)) || (is_dir($target) && !is_writable($target))) {
+            } else if (!is_writable(dirname($target)) || (is_dir($target) && !$this->is_removable($target))) {
                 $status = self::REINSTALL_NOTWRITABLE;
             } else {
                 $status = self::REINSTALL_READY;
@@ -352,6 +358,47 @@ class stasher {
             $this->replace_dir($this->get_stash_dir() . '/' . $reldir, $target);
         });
         core_plugin_manager::reset_caches();
+    }
+
+    /**
+     * Whether a stashed plugin's version.php allows it to run on this Moodle version.
+     *
+     * Mirrors the checks that make Moodle's plugin check refuse to continue: a
+     * "requires" newer than this site, or an "incompatible" branch at or below it.
+     *
+     * @param string $dir absolute path of the stashed plugin directory.
+     * @return bool true if compatible, or if there is no version.php to check.
+     */
+    protected function is_core_compatible(string $dir): bool {
+        global $CFG;
+
+        $file = $dir . '/version.php';
+        if (!is_readable($file)) {
+            return true;
+        }
+        // Read it the way core does: version.php only sets properties on $plugin.
+        $plugin = new \stdClass();
+        (static function (string $file, \stdClass $plugin): void {
+            include($file);
+        })($file, $plugin);
+
+        if (!empty($plugin->requires) && (float) $plugin->requires > (float) $CFG->version) {
+            return false;
+        }
+        if (!empty($plugin->incompatible) && (int) $CFG->branch >= (int) $plugin->incompatible) {
+            return false;
+        }
+        return true;
+    }
+
+    /**
+     * Whether an existing plugin directory, and everything in it, can be removed.
+     *
+     * @param string $dir absolute directory path.
+     * @return bool true if every file and subdirectory is writable.
+     */
+    protected function is_removable(string $dir): bool {
+        return core_plugin_manager::instance()->is_directory_removable($dir);
     }
 
     /**
@@ -415,7 +462,9 @@ class stasher {
      */
     public function zip_self(string $zippath): bool {
         $dir = \core_component::get_component_directory(self::COMPONENT);
-        $files = $this->build_zip_filelist($dir, basename($dir));
+        // Leave out hidden entries such as .git: a clone's metadata can hold
+        // credentials and does not belong in an installable plugin.
+        $files = $this->build_zip_filelist($dir, basename($dir), true);
         if (empty($files)) {
             return false;
         }
@@ -505,16 +554,22 @@ class stasher {
      *
      * @param string $dir absolute source directory.
      * @param string $root name of the top-level folder inside the archive.
+     * @param bool $skiphidden whether to leave out files and directories whose names start with a dot.
      * @return string[] map of archive path to absolute file path.
      */
-    protected function build_zip_filelist(string $dir, string $root): array {
+    protected function build_zip_filelist(string $dir, string $root, bool $skiphidden = false): array {
         $dir = rtrim($dir, '/');
 
+        $directory = new \RecursiveDirectoryIterator($dir, \FilesystemIterator::SKIP_DOTS);
+        if ($skiphidden) {
+            $directory = new \RecursiveCallbackFilterIterator(
+                $directory,
+                static fn(\SplFileInfo $item): bool => strpos($item->getFilename(), '.') !== 0
+            );
+        }
+
         $files = [];
-        $iterator = new \RecursiveIteratorIterator(
-            new \RecursiveDirectoryIterator($dir, \FilesystemIterator::SKIP_DOTS),
-            \RecursiveIteratorIterator::SELF_FIRST
-        );
+        $iterator = new \RecursiveIteratorIterator($directory, \RecursiveIteratorIterator::SELF_FIRST);
         foreach ($iterator as $item) {
             if ($item->isLink() || !$item->isFile()) {
                 continue;
@@ -595,10 +650,13 @@ class stasher {
      * @param string $from source directory.
      * @param string $to destination directory.
      * @return void
+     * @throws \moodle_exception if the existing destination cannot be removed.
      */
     protected function replace_dir(string $from, string $to): void {
-        if (is_dir($to)) {
-            remove_dir($to);
+        // Stop rather than copy over a half-removed tree, which would leave a
+        // mix of old and new files behind.
+        if (is_dir($to) && !remove_dir($to)) {
+            throw new \moodle_exception('errorremovefailed', 'tool_pluginstash', '', $to);
         }
         $this->copy_dir($from, $to);
     }

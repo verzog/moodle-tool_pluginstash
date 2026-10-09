@@ -37,6 +37,9 @@ class testable_stasher extends stasher {
     /** @var string|null Base directory that reinstalls are written into, or null for none. */
     protected $targetroot = null;
 
+    /** @var bool|null Simulated result of the removability check, or null to check the real directory. */
+    protected $removable = null;
+
     /**
      * Register the directory and version that a component should stash from.
      *
@@ -99,5 +102,28 @@ class testable_stasher extends stasher {
      */
     protected function get_reinstall_target(string $component): ?string {
         return ($this->targetroot === null) ? null : $this->targetroot . '/' . $component;
+    }
+
+    /**
+     * Simulate whether an existing plugin directory can be removed.
+     *
+     * Tests run as users who can often write anywhere, so a read-only tree cannot
+     * be relied on to simulate this.
+     *
+     * @param bool|null $removable simulated result, or null to check the real directory.
+     * @return void
+     */
+    public function set_removable(?bool $removable): void {
+        $this->removable = $removable;
+    }
+
+    /**
+     * Return the simulated removability, falling back to the real check.
+     *
+     * @param string $dir absolute directory path.
+     * @return bool true if the directory can be removed.
+     */
+    protected function is_removable(string $dir): bool {
+        return $this->removable ?? parent::is_removable($dir);
     }
 }
