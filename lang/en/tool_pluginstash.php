@@ -29,7 +29,8 @@ $string['cli_done'] = 'Done. Restored {$a->restored}, skipped {$a->skipped}, fai
 $string['cli_failed'] = 'Failed to restore {$a->component}: {$a->error}';
 $string['cli_help'] = 'Restore stashed add-on plugins back into the code tree.
 
-Run this after an upgrade or rebuild, before you run Notifications.
+Run this from the Moodle root after an upgrade or rebuild, before you run Notifications.
+A subplugin is restored once the plugin it belongs to is back.
 
 Options:
   -h, --help              Print this help.
@@ -38,7 +39,7 @@ Options:
   -o, --overwrite         Overwrite destination directories that already exist.
 
 Example:
-  php restore.php --overwrite
+  php public/admin/tool/pluginstash/cli/restore.php --overwrite
 ';
 $string['cli_nomanifest'] = 'No stash manifest found in {$a}. Nothing to restore.';
 $string['cli_restored'] = 'Restored {$a}.';

@@ -69,15 +69,23 @@ so you can refresh the stashed copy, or if its stashed copy has been removed
 from the stash directory. When every add-on is stashed and up to date, the page
 shows a notice instead of the checklist.
 
-The **Enable stashing** setting is a kill-switch: turn it off to lock the tool
-without uninstalling it. The stash directory defaults to a folder inside your
-Moodle data root and can be changed in the plugin settings.
+The **Enable stashing** setting is a kill-switch: turn it off to lock stashing
+and reinstalling without uninstalling the tool. The stash directory defaults to
+`tool_pluginstash` inside your Moodle data root (`$CFG->dataroot`) and can be
+changed in **Site administration → Plugins → Plugin Stash settings**.
 
 Below the stash form, the page lists the plugins currently in the stash with a
 **Download as zip** link for each. The zip contains the plugin under its own
 top-level folder, so it can be re-installed through **Site administration →
 Plugins → Install plugins**. This list (and the download links) stay available
 even when stashing is disabled, since downloading is read-only.
+
+The stash lives outside the code tree, so Plugin Stash checks it rather than
+trusting it. A stashed plugin's `version.php` is read, never run. An entry is
+only used if it sits in that plugin's own folder inside the stash (no symlinks),
+and is refused if its `version.php` names a different plugin. If an entry fails
+these checks, the plugin appears in the checklist again: stash it again to
+repair the entry.
 
 ### Reinstalling (web UI)
 
@@ -96,6 +104,11 @@ column for site administrators (it needs `moodle/site:config` as well as
 Where a plugin cannot be reinstalled, the column says why instead:
 
 - **Installed** — the code tree already has the stashed version or newer.
+- **The stashed copy does not match this plugin** — the stash entry is not in
+  the plugin's own folder, or its `version.php` names another plugin. Stash the
+  plugin again.
+- **The stashed copy is missing** — the plugin's folder has gone from the stash
+  directory.
 - **The site already has a newer version** — the database records a newer
   version than the stash, and Moodle does not allow downgrades.
 - **The stashed version does not support this version of Moodle** — its
@@ -103,9 +116,11 @@ Where a plugin cannot be reinstalled, the column says why instead:
   incompatible, so Notifications would refuse to continue with it installed.
 - **Installing plugins from the web is turned off** — the site sets
   `$CFG->disableupdateautodeploy`, which also turns off **Install plugins**.
+- **This site does not recognise the plugin type** — the plugin is a
+  subplugin whose owner plugin is not installed. Reinstall the owner first.
 - **The web server cannot write to this plugin's folder** — the code tree, or
-  part of an existing copy of the plugin, is read-only to the web server. Use the **Download as zip** link on another
-  site, or the CLI restore below.
+  part of an existing copy of the plugin, is read-only to the web server. Use
+  the CLI restore below, or ask whoever manages the server to add the plugin.
 
 ### If an upgrade removes Plugin Stash itself
 
@@ -134,7 +149,8 @@ If your host does not allow that, ask them to keep
 ### Restoring (CLI)
 
 After you have rebuilt or upgraded the code tree, and **before** you run
-Notifications:
+Notifications, run this from the Moodle root (the folder that contains
+`public/`):
 
 ```sh
 php public/admin/tool/pluginstash/cli/restore.php --overwrite
@@ -149,6 +165,9 @@ Useful options:
 
 The CLI restore is for administrators with server access. It runs before
 Notifications, so the plugins are back in place before the upgrade checks them.
+A subplugin is restored once the plugin it belongs to is back, whatever order
+they appear in the manifest. An entry that fails the stash checks described
+above is reported as failed and left alone.
 
 > **Prerequisite:** `restore.php` is part of this plugin, so this plugin must
 > itself be present in the rebuilt code tree before you can restore. Keep
@@ -158,10 +177,22 @@ Notifications, so the plugins are back in place before the upgrade checks them.
 ## Releasing
 
 Publishing a GitHub release whose tag matches `$plugin->release` in
-`version.php` (for example `v1.3.0`) runs the **Release zip** workflow. It
-builds `tool_pluginstash-v1.3.0.zip`, with the plugin in a `pluginstash/`
+`version.php` (for example `v1.3.1`) runs the **Release zip** workflow. It
+builds `tool_pluginstash-v1.3.1.zip`, with the plugin in a `pluginstash/`
 folder and without development files, and attaches it to the release. If the
 tag and `version.php` disagree, the workflow fails and nothing is attached.
+
+## Development
+
+Every push and pull request runs the **Moodle Plugin CI** workflow:
+
+- A quick `policy` job checks that `LICENSE` is the GNU GPL v3 text and that
+  every PHP file has the `@license … GNU GPL v3 or later` tag.
+- The Moodle matrix (5.1, 5.2 and 5.3 LTS, plus Moodle's `main` branch, which
+  is allowed to fail) runs PHP lint, the Moodle code and PHPDoc checkers,
+  validation, PHPUnit and Behat. Warnings fail the build.
+- The PHPUnit suite also fails if a capability with configuration, XSS or
+  data-loss risk is given to a role by default.
 
 ## Changelog
 
@@ -176,8 +207,13 @@ tag and `version.php` disagree, the workflow fails and nothing is attached.
   **Site administration → Users → Define roles → Manager**.
 - **Stash contents are checked, not trusted.** A stashed plugin's `version.php`
   is read, never run. Restore, Reinstall and Download refuse a stash entry that
-  is not in the plugin's own directory, or whose `version.php` names a
-  different plugin.
+  is not in the plugin's own directory, is reached through a symlink, or whose
+  `version.php` names a different plugin. Such a plugin is offered in the stash
+  checklist again so you can repair it.
+- **CLI restore handles subplugins.** A subplugin is restored after the plugin
+  it belongs to, instead of failing after a rebuild.
+- **CI checks** for the licence file and for risky capabilities given to a role
+  by default.
 
 ### v1.3.0 (09/10/2026)
 

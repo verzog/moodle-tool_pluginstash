@@ -24,8 +24,8 @@
 
 defined('MOODLE_INTERNAL') || die();
 
-// Register the manage page independently of $hassiteconfig so that a manager who
-// holds tool/pluginstash:manage but not full site config can still reach it; the
+// Register the manage page independently of $hassiteconfig so that a role an
+// administrator has granted tool/pluginstash:manage can still reach it; the
 // external page enforces the capability itself.
 $ADMIN->add('tools', new admin_externalpage(
     'tool_pluginstash',

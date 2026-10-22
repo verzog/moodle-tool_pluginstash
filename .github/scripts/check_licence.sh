@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Fail if the shipped licence text or any file's @license tag does not match the
-# licence this plugin declares (GNU GPL v3 or later; CLAUDE.md §9.2).
+# licence this plugin declares (GNU GPL v3 or later).
 set -euo pipefail
 
 expected='@license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later'
