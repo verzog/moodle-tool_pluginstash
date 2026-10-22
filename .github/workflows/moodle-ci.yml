@@ -10,6 +10,19 @@ env:
   TZ: Australia/Sydney
 
 jobs:
+  policy:
+    # A plugin-directory review check that phpcs and the test suites do not cover.
+    # It needs no Moodle install, so it runs in seconds. (Default role permissions
+    # for risky capabilities are checked in the PHPUnit suite.)
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v6
+
+      - name: Licence text and @license tags match GPL v3 or later
+        run: bash .github/scripts/check_licence.sh
+
   test:
     runs-on: ubuntu-24.04
 

@@ -806,18 +806,27 @@ final class stasher_test extends \advanced_testcase {
     }
 
     /**
-     * The Plugin Stash capability is not given to any role by default.
+     * No risky capability is given to a role by default.
      *
-     * It exposes the source of every add-on plugin and writes to the stash, so
-     * only site administrators have it unless one grants it on purpose.
+     * A capability with RISK_CONFIG, RISK_XSS or RISK_DATALOSS stays with site
+     * administrators unless one grants it on purpose. Plugin Stash's own capability
+     * exposes the source of every add-on plugin, so it must have no default role.
      *
      * @return void
      */
-    public function test_capability_has_no_default_archetypes(): void {
+    public function test_risky_capabilities_have_no_default_archetypes(): void {
         global $CFG;
 
         $capabilities = [];
         require($CFG->dirroot . '/admin/tool/pluginstash/db/access.php');
+
+        $risky = RISK_CONFIG | RISK_XSS | RISK_DATALOSS;
+        foreach ($capabilities as $name => $definition) {
+            if (($definition['riskbitmask'] ?? 0) & $risky) {
+                $allowed = array_keys(array_filter($definition['archetypes'] ?? [], fn($p) => $p === CAP_ALLOW));
+                $this->assertSame([], $allowed, "{$name} is risky, so it must not be given to a role by default");
+            }
+        }
         $this->assertSame([], $capabilities['tool/pluginstash:manage']['archetypes']);
     }
 
