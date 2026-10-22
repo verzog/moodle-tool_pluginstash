@@ -82,9 +82,10 @@ even when stashing is disabled, since downloading is read-only.
 
 The stash lives outside the code tree, so Plugin Stash checks it rather than
 trusting it. A stashed plugin's `version.php` is read, never run. An entry is
-only used if it sits in that plugin's own folder inside the stash (no symlinks)
-and its `version.php` names the same plugin. If an entry fails these checks,
-the plugin appears in the checklist again: stash it again to repair the entry.
+only used if it sits in that plugin's own folder inside the stash (no symlinks),
+and is refused if its `version.php` names a different plugin. If an entry fails
+these checks, the plugin appears in the checklist again: stash it again to
+repair the entry.
 
 ### Reinstalling (web UI)
 
