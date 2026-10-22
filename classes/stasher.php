@@ -49,6 +49,9 @@ class stasher {
     /** @var string Reinstall status: the stashed copy does not support this Moodle version. */
     const REINSTALL_INCOMPATIBLE = 'incompatible';
 
+    /** @var string Reinstall status: the stashed copy is not where this plugin belongs, or declares another plugin. */
+    const REINSTALL_INVALID = 'invalid';
+
     /** @var string Reinstall status: the stashed copy is missing from the stash directory. */
     const REINSTALL_MISSING = 'missing';
 
@@ -258,6 +261,7 @@ class stasher {
      * @param bool $overwrite whether to overwrite an existing destination directory.
      * @param string|null $targetroot base directory to restore into; defaults to dirroot.
      * @return bool true if the component was restored, false if it was missing or skipped.
+     * @throws \moodle_exception if the manifest entry does not match the component.
      */
     public function restore_component(string $component, bool $overwrite = false, ?string $targetroot = null): bool {
         global $CFG;
@@ -270,6 +274,12 @@ class stasher {
             $manifest = $this->read_manifest();
             if (!isset($manifest[$component]['reldir'])) {
                 return false;
+            }
+
+            // The manifest lives outside the code tree, so never trust its path:
+            // a changed reldir must not let a restore replace another directory.
+            if (!$this->is_valid_stash_entry($component, $manifest[$component])) {
+                throw new \moodle_exception('errorinvalidstash', self::COMPONENT, '', $component);
             }
 
             $reldir = $manifest[$component]['reldir'];
@@ -305,7 +315,9 @@ class stasher {
             $stashedversion = (int) $entry['version'];
             $target = $this->get_reinstall_target($component);
 
-            if (!is_dir($stashdir . '/' . $entry['reldir'])) {
+            if (!$this->is_valid_stash_entry($component, $entry)) {
+                $status = self::REINSTALL_INVALID;
+            } else if (!is_dir($stashdir . '/' . $entry['reldir'])) {
                 $status = self::REINSTALL_MISSING;
             } else if ($diskversion !== null && $diskversion >= $stashedversion) {
                 $status = self::REINSTALL_CURRENT;
@@ -361,31 +373,86 @@ class stasher {
     }
 
     /**
+     * Whether a manifest entry is safe to read from and restore.
+     *
+     * The stash sits outside the code tree, so its manifest and files are checked
+     * rather than trusted: the recorded directory must be exactly where the
+     * component belongs, and a stashed version.php must not declare another plugin.
+     *
+     * @param string $component frankenstyle component name.
+     * @param array $entry the component's manifest entry.
+     * @return bool true if the entry can be used.
+     */
+    public function is_valid_stash_entry(string $component, array $entry): bool {
+        $expected = $this->get_expected_reldir($component);
+        if ($expected === null || !isset($entry['reldir']) || $entry['reldir'] !== $expected) {
+            return false;
+        }
+        $declared = $this->read_version_php($this->get_stash_dir() . '/' . $expected)['component'] ?? null;
+        return $declared === null || $declared === $component;
+    }
+
+    /**
+     * Read the properties that a plugin's version.php sets, without running it.
+     *
+     * Like core's plugin validator, this reads the file's tokens and picks out
+     * literal assignments such as "$plugin->requires = 2025100600;".
+     *
+     * @param string $dir absolute path of a plugin directory.
+     * @return array property name => value, for component, version, release, requires and incompatible.
+     */
+    protected function read_version_php(string $dir): array {
+        $file = $dir . '/version.php';
+        if (!is_file($file) || !is_readable($file)) {
+            return [];
+        }
+
+        // Keep only the meaningful tokens, so "$plugin -> requires = 1 ;" and
+        // comments between them do not matter.
+        $tokens = array_values(array_filter(
+            token_get_all((string) file_get_contents($file)),
+            static fn($token): bool => !is_array($token)
+                || !in_array($token[0], [T_WHITESPACE, T_COMMENT, T_DOC_COMMENT, T_OPEN_TAG], true)
+        ));
+
+        $wanted = ['component', 'version', 'release', 'requires', 'incompatible'];
+        $values = [];
+        for ($i = 0; $i + 5 < count($tokens); $i++) {
+            $isassignment = is_array($tokens[$i]) && $tokens[$i][0] === T_VARIABLE && $tokens[$i][1] === '$plugin'
+                && is_array($tokens[$i + 1]) && $tokens[$i + 1][0] === T_OBJECT_OPERATOR
+                && is_array($tokens[$i + 2]) && $tokens[$i + 2][0] === T_STRING && in_array($tokens[$i + 2][1], $wanted, true)
+                && $tokens[$i + 3] === '=' && is_array($tokens[$i + 4]) && $tokens[$i + 5] === ';';
+            if (!$isassignment) {
+                continue;
+            }
+            [$type, $text] = $tokens[$i + 4];
+            if ($type === T_LNUMBER || $type === T_DNUMBER) {
+                $values[$tokens[$i + 2][1]] = $text;
+            } else if ($type === T_CONSTANT_ENCAPSED_STRING) {
+                $values[$tokens[$i + 2][1]] = substr($text, 1, -1);
+            }
+        }
+        return $values;
+    }
+
+    /**
      * Whether a stashed plugin's version.php allows it to run on this Moodle version.
      *
      * Mirrors the checks that make Moodle's plugin check refuse to continue: a
      * "requires" newer than this site, or an "incompatible" branch at or below it.
+     * The file is read, never run.
      *
      * @param string $dir absolute path of the stashed plugin directory.
-     * @return bool true if compatible, or if there is no version.php to check.
+     * @return bool true if compatible, or if version.php does not say otherwise.
      */
     protected function is_core_compatible(string $dir): bool {
         global $CFG;
 
-        $file = $dir . '/version.php';
-        if (!is_readable($file)) {
-            return true;
-        }
-        // Read it the way core does: version.php only sets properties on $plugin.
-        $plugin = new \stdClass();
-        (static function (string $file, \stdClass $plugin): void {
-            include($file);
-        })($file, $plugin);
-
-        if (!empty($plugin->requires) && (float) $plugin->requires > (float) $CFG->version) {
+        $plugin = $this->read_version_php($dir);
+        if (!empty($plugin['requires']) && (float) $plugin['requires'] > (float) $CFG->version) {
             return false;
         }
-        if (!empty($plugin->incompatible) && (int) $CFG->branch >= (int) $plugin->incompatible) {
+        if (!empty($plugin['incompatible']) && (int) $CFG->branch >= (int) $plugin['incompatible']) {
             return false;
         }
         return true;
@@ -442,6 +509,33 @@ class stasher {
      * @return string|null absolute plugin directory, or null if the plugin type is unknown.
      */
     protected function get_reinstall_target(string $component): ?string {
+        return $this->get_plugin_directory($component);
+    }
+
+    /**
+     * Return where a component's stashed copy must be recorded, relative to dirroot.
+     *
+     * This is a seam: tests override it to match their fixture directories.
+     *
+     * @param string $component frankenstyle component name.
+     * @return string|null path relative to dirroot, e.g. "local/myplugin", or null if unknown.
+     */
+    protected function get_expected_reldir(string $component): ?string {
+        $dir = $this->get_plugin_directory($component);
+        return ($dir === null) ? null : $this->get_relative_dir($dir);
+    }
+
+    /**
+     * Return the absolute directory a component belongs in, from the site's plugin types.
+     *
+     * @param string $component frankenstyle component name.
+     * @return string|null absolute plugin directory, or null for an invalid name or unknown plugin type.
+     */
+    private function get_plugin_directory(string $component): ?string {
+        // A clean component name keeps the plugin name free of slashes and dots.
+        if (clean_param($component, PARAM_COMPONENT) !== $component) {
+            return null;
+        }
         [$type, $name] = \core_component::normalize_component($component);
         if ($type === 'core' || empty($name)) {
             return null;
@@ -504,7 +598,7 @@ class stasher {
      * @param string $component frankenstyle component name.
      * @param string $zippath absolute path of the zip file to create.
      * @return bool true on success, false if the component is not stashed.
-     * @throws \moodle_exception if the archive cannot be written.
+     * @throws \moodle_exception if the manifest entry does not match the component, or the archive cannot be written.
      */
     public function zip_component(string $component, string $zippath): bool {
         // Hold the stash lock while enumerating and archiving so a concurrent
@@ -513,6 +607,12 @@ class stasher {
             $manifest = $this->read_manifest();
             if (!isset($manifest[$component]['reldir'])) {
                 return false;
+            }
+
+            // Never archive a directory the manifest points at outside the plugin's
+            // own stashed copy.
+            if (!$this->is_valid_stash_entry($component, $manifest[$component])) {
+                throw new \moodle_exception('errorinvalidstash', self::COMPONENT, '', $component);
             }
 
             $reldir = $manifest[$component]['reldir'];
