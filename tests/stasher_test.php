@@ -652,6 +652,22 @@ final class stasher_test extends \advanced_testcase {
     }
 
     /**
+     * The Plugin Stash capability is not given to any role by default.
+     *
+     * It exposes the source of every add-on plugin and writes to the stash, so
+     * only site administrators have it unless one grants it on purpose.
+     *
+     * @return void
+     */
+    public function test_capability_has_no_default_archetypes(): void {
+        global $CFG;
+
+        $capabilities = [];
+        require($CFG->dirroot . '/admin/tool/pluginstash/db/access.php');
+        $this->assertSame([], $capabilities['tool/pluginstash:manage']['archetypes']);
+    }
+
+    /**
      * Every capability declared in db/access.php has a language string.
      *
      * The roles UI resolves the capability's name via get_string(), so a missing
