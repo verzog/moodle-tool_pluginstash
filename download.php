@@ -15,7 +15,7 @@
 // along with Moodle.  If not, see <https://www.gnu.org/licenses/>.
 
 /**
- * Stream a stashed plugin to the browser as a re-installable zip archive.
+ * Stream a stashed plugin, or Plugin Stash itself, to the browser as a re-installable zip archive.
  *
  * @package    tool_pluginstash
  * @copyright  2026 Vernon Spain

@@ -18,7 +18,8 @@
  * Plugin Stash administration page.
  *
  * Lists the installed add-on plugins as a checklist and copies the ticked ones
- * into the stash directory.
+ * into the stash directory. Also lists the stashed plugins, with download and
+ * reinstall actions, and offers a zip of Plugin Stash itself for recovery.
  *
  * @package    tool_pluginstash
  * @copyright  2026 Vernon Spain

@@ -23,8 +23,10 @@ use core_plugin_manager;
  *
  * This is a convenience tool for test and development sites: it lets an
  * administrator copy non-core plugins to a safe location before an upgrade or
- * rebuild, and restore them afterwards (via {@see \tool_pluginstash\stasher} from
- * the CLI) before Notifications is run.
+ * rebuild, and put them back afterwards, either from the web UI (reinstall()) or
+ * from the CLI (restore_component()), before Notifications is run. The stash is
+ * outside the code tree, so its manifest and files are validated before use
+ * (is_valid_stash_entry()).
  *
  * @package    tool_pluginstash
  * @copyright  2026 Vernon Spain
