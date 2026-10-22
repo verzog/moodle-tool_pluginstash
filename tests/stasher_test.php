@@ -692,6 +692,55 @@ final class stasher_test extends \advanced_testcase {
     }
 
     /**
+     * A symlink in place of the stashed copy, or above it, is never followed.
+     *
+     * @return void
+     */
+    public function test_symlinked_stash_copy_is_rejected(): void {
+        $this->resetAfterTest();
+        $stasher = $this->stash_fake_for_reinstall();
+        $stashdir = $stasher->get_stash_dir();
+        $reldir = $stasher->get_relative_dir(__DIR__ . '/fixtures/fakeplugin');
+
+        $outside = make_request_directory();
+        file_put_contents($outside . '/secret.txt', 'secret');
+
+        // The plugin's own directory replaced with a link.
+        remove_dir($stashdir . '/' . $reldir);
+        symlink($outside, $stashdir . '/' . $reldir);
+        $entry = $stasher->read_manifest()['local_fake'];
+        $this->assertFalse($stasher->is_valid_stash_entry('local_fake', $entry));
+        $this->assertSame(['local_fake' => stasher::REINSTALL_INVALID], $stasher->get_reinstall_statuses());
+
+        // A directory above it replaced with a link.
+        unlink($stashdir . '/' . $reldir);
+        $top = $stashdir . '/' . strtok($reldir, '/');
+        remove_dir($top);
+        $fake = make_request_directory();
+        make_writable_directory($fake . '/' . substr($reldir, strlen(strtok($reldir, '/')) + 1));
+        symlink($fake, $top);
+        $this->assertFalse($stasher->is_valid_stash_entry('local_fake', $entry));
+
+        $this->expectException(\moodle_exception::class);
+        $stasher->restore_component('local_fake', true, make_request_directory());
+    }
+
+    /**
+     * An installed plugin whose stash entry fails validation is offered for stashing again.
+     *
+     * @return void
+     */
+    public function test_get_stashable_plugins_offers_invalid_entry(): void {
+        $this->resetAfterTest();
+        $stasher = $this->stash_fake_for_reinstall();
+        $addons = ['local_fake' => (object) ['component' => 'local_fake', 'versiondisk' => 2026010100]];
+        $this->assertSame([], $stasher->get_stashable_plugins($addons));
+
+        $stasher->set_expected_reldir('local_fake', 'local/fake');
+        $this->assertSame(['local_fake'], array_keys($stasher->get_stashable_plugins($addons)));
+    }
+
+    /**
      * A stashed version.php that declares a different plugin is rejected.
      *
      * @return void

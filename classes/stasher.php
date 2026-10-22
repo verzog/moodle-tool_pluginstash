@@ -171,7 +171,10 @@ class stasher {
         $stashable = [];
         foreach ($addons as $component => $plugin) {
             $entry = $manifest[$component] ?? null;
-            $uptodate = $entry !== null && is_dir($stashdir . '/' . $entry['reldir'])
+            // An entry that fails validation is offered again, so stashing the
+            // plugin afresh repairs it.
+            $uptodate = $entry !== null && $this->is_valid_stash_entry($component, $entry)
+                && is_dir($stashdir . '/' . $entry['reldir'])
                 && (int) $plugin->versiondisk <= (int) $entry['version'];
             if ($uptodate) {
                 continue;
@@ -377,7 +380,8 @@ class stasher {
      *
      * The stash sits outside the code tree, so its manifest and files are checked
      * rather than trusted: the recorded directory must be exactly where the
-     * component belongs, and a stashed version.php must not declare another plugin.
+     * component belongs, must really be inside the stash (no symlink anywhere
+     * below the stash root), and a stashed version.php must not declare another plugin.
      *
      * @param string $component frankenstyle component name.
      * @param array $entry the component's manifest entry.
@@ -388,7 +392,17 @@ class stasher {
         if ($expected === null || !isset($entry['reldir']) || $entry['reldir'] !== $expected) {
             return false;
         }
-        $declared = $this->read_version_php($this->get_stash_dir() . '/' . $expected)['component'] ?? null;
+        $stashdir = $this->get_stash_dir();
+        $dir = $stashdir . '/' . $expected;
+        if (file_exists($dir) || is_link($dir)) {
+            // Copying and zipping follow the top directory, so a symlink at or above
+            // it could expose any directory the web server can read.
+            $realroot = realpath($stashdir);
+            if ($realroot === false || realpath($dir) !== $realroot . '/' . $expected) {
+                return false;
+            }
+        }
+        $declared = $this->read_version_php($dir)['component'] ?? null;
         return $declared === null || $declared === $component;
     }
 

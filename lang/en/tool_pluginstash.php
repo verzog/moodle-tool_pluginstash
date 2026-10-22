@@ -51,8 +51,8 @@ $string['enabled'] = 'Enable stashing';
 $string['enabled_desc'] = 'When enabled, the Plugin Stash page can copy add-on plugins to the stash directory and reinstall them
 from it. Disable this to lock the tool without uninstalling it.';
 $string['errorcopyfailed'] = 'Failed to copy file: {$a}';
-$string['errorinvalidstash'] = 'The stashed copy of {$a} is not where that plugin belongs, or declares a different plugin, so it was
-not used. Stash the plugin again.';
+$string['errorinvalidstash'] = 'The stashed copy of {$a} was not used: it is not in the plugin\'s folder or names another plugin.
+Stash the plugin again.';
 $string['errormanifestcorrupt'] = 'The stash manifest is corrupt and could not be read: {$a}';
 $string['errornotstashed'] = 'The plugin "{$a}" is not recorded in the stash.';
 $string['errorreinstall'] = 'Could not reinstall {$a->component}: {$a->reason}';

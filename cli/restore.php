@@ -26,6 +26,9 @@
  */
 
 define('CLI_SCRIPT', true);
+// Scan the code tree for plugins on every lookup rather than trusting the component
+// cache: restoring an owner plugin makes its subplugin types known.
+define('IGNORE_COMPONENT_CACHE', true);
 
 require(__DIR__ . '/../../../../config.php');
 require_once($CFG->libdir . '/clilib.php');
@@ -82,24 +85,50 @@ $components = ($options['component'] !== '') ? [$options['component']] : array_k
 
 $restored = 0;
 $skipped = 0;
-$failed = 0;
-foreach ($components as $component) {
-    try {
-        if ($stasher->restore_component($component, $overwrite)) {
-            cli_writeln(get_string('cli_restored', 'tool_pluginstash', $component));
-            $restored++;
-        } else {
-            cli_writeln(get_string('cli_skipped', 'tool_pluginstash', $component));
-            $skipped++;
+$errors = [];
+// A subplugin's directory is only known once its owner plugin is in the code tree,
+// so an entry that cannot be placed yet is retried after a pass that restored
+// something, until a pass makes no progress.
+$pending = $components;
+do {
+    $progress = false;
+    $retry = [];
+    foreach ($pending as $component) {
+        try {
+            if ($stasher->restore_component($component, $overwrite)) {
+                cli_writeln(get_string('cli_restored', 'tool_pluginstash', $component));
+                $restored++;
+                $progress = true;
+                // Rescan so plugin types added by this plugin are known.
+                core_component::reset();
+                core_plugin_manager::reset_caches();
+            } else {
+                cli_writeln(get_string('cli_skipped', 'tool_pluginstash', $component));
+                $skipped++;
+            }
+        } catch (moodle_exception $e) {
+            $errors[$component] = $e->getMessage();
+            if ($e->errorcode === 'errorinvalidstash') {
+                $retry[] = $component;
+            }
         }
-    } catch (moodle_exception $e) {
-        cli_writeln(get_string('cli_failed', 'tool_pluginstash', (object) [
-            'component' => $component,
-            'error'     => $e->getMessage(),
-        ]));
-        $failed++;
     }
+    foreach ($retry as $component) {
+        unset($errors[$component]);
+    }
+    $pending = $retry;
+} while ($pending && $progress);
+
+foreach ($pending as $component) {
+    $errors[$component] = get_string('errorinvalidstash', 'tool_pluginstash', $component);
 }
+foreach ($errors as $component => $error) {
+    cli_writeln(get_string('cli_failed', 'tool_pluginstash', (object) [
+        'component' => $component,
+        'error'     => $error,
+    ]));
+}
+$failed = count($errors);
 
 cli_writeln(get_string('cli_done', 'tool_pluginstash', (object) [
     'restored' => $restored,
