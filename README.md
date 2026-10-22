@@ -45,9 +45,11 @@ would delete the stash along with the code it is meant to protect.
 2. Log in as an administrator and visit **Site administration → Notifications**,
    or run `php admin/cli/upgrade.php`, to complete the installation.
 
-Either way, after installing, grant the `tool/pluginstash:manage` capability to
-the roles that should use the tool (it is assigned to the Manager archetype by
-default).
+After installing, only site administrators can use the tool. The
+`tool/pluginstash:manage` capability is not given to any role by default,
+because it lets the holder copy every add-on plugin into the stash and download
+its source. Grant it to another role only if you mean to. Reinstalling also
+needs `moodle/site:config`.
 
 ## Usage
 
@@ -162,6 +164,20 @@ folder and without development files, and attaches it to the release. If the
 tag and `version.php` disagree, the workflow fails and nothing is attached.
 
 ## Changelog
+
+### v1.3.1 (22/10/2026)
+
+- **Licence file fixed.** `LICENSE` now contains the GNU GPL v3, matching the
+  licence every file declares. It previously held the GNU AGPL v3 by mistake.
+- **No default role for the capability.** `tool/pluginstash:manage` is no longer
+  given to the Manager role on new installs, so only site administrators can use
+  the tool unless one grants it. Upgrading does not change existing role
+  permissions: to take it away from managers on an existing site, go to
+  **Site administration → Users → Define roles → Manager**.
+- **Stash contents are checked, not trusted.** A stashed plugin's `version.php`
+  is read, never run. Restore, Reinstall and Download refuse a stash entry that
+  is not in the plugin's own directory, or whose `version.php` names a
+  different plugin.
 
 ### v1.3.0 (09/10/2026)
 
