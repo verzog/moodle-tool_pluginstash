@@ -29,8 +29,8 @@ $capabilities = [
         'riskbitmask'  => RISK_CONFIG | RISK_DATALOSS,
         'captype'      => 'write',
         'contextlevel' => CONTEXT_SYSTEM,
-        'archetypes'   => [
-            'manager' => CAP_ALLOW,
-        ],
+        // No default role: only site administrators have it unless one grants it on
+        // purpose, since it exposes every add-on plugin's source and writes to the stash.
+        'archetypes'   => [],
     ],
 ];

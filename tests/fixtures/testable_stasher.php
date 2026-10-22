@@ -40,6 +40,9 @@ class testable_stasher extends stasher {
     /** @var bool|null Simulated result of the removability check, or null to check the real directory. */
     protected $removable = null;
 
+    /** @var string[] Map of component to the reldir its stash entry must have, overriding the default. */
+    protected $expectedreldirs = [];
+
     /**
      * Register the directory and version that a component should stash from.
      *
@@ -125,5 +128,32 @@ class testable_stasher extends stasher {
      */
     protected function is_removable(string $dir): bool {
         return $this->removable ?? parent::is_removable($dir);
+    }
+
+    /**
+     * Override where a component's stashed copy must be recorded.
+     *
+     * @param string $component frankenstyle component name.
+     * @param string $reldir expected path relative to dirroot.
+     * @return void
+     */
+    public function set_expected_reldir(string $component, string $reldir): void {
+        $this->expectedreldirs[$component] = $reldir;
+    }
+
+    /**
+     * Expect fixture components where they were stashed from, unless overridden.
+     *
+     * @param string $component frankenstyle component name.
+     * @return string|null expected path relative to dirroot, or null if unknown.
+     */
+    protected function get_expected_reldir(string $component): ?string {
+        if (isset($this->expectedreldirs[$component])) {
+            return $this->expectedreldirs[$component];
+        }
+        if (isset($this->sources[$component])) {
+            return $this->get_relative_dir($this->sources[$component][0]);
+        }
+        return parent::get_expected_reldir($component);
     }
 }

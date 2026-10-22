@@ -633,6 +633,160 @@ final class stasher_test extends \advanced_testcase {
     }
 
     /**
+     * The stash directory a component must use comes from its plugin type, not the manifest.
+     *
+     * @return void
+     */
+    public function test_get_expected_reldir_uses_plugin_type_root(): void {
+        $this->resetAfterTest();
+        $stasher = new stasher();
+        $method = new \ReflectionMethod($stasher, 'get_expected_reldir');
+
+        $this->assertSame('local/fake', $method->invoke($stasher, 'local_fake'));
+        $this->assertSame('admin/tool/fake', $method->invoke($stasher, 'tool_fake'));
+        $this->assertNull($method->invoke($stasher, 'local_../../etc'));
+        $this->assertNull($method->invoke($stasher, 'notatype_fake'));
+    }
+
+    /**
+     * Data provider for test_tampered_reldir_is_rejected().
+     *
+     * @return array test cases of [replacement reldir].
+     */
+    public static function tampered_reldir_provider(): array {
+        return [
+            'Empty' => [''],
+            'Parent directory' => ['../../somewhere'],
+            'Another plugin' => ['local/other'],
+        ];
+    }
+
+    /**
+     * A manifest reldir that is not the component's own directory is never restored, reinstalled or zipped.
+     *
+     * @param string $reldir replacement reldir written into the manifest.
+     * @return void
+     */
+    #[DataProvider('tampered_reldir_provider')]
+    public function test_tampered_reldir_is_rejected(string $reldir): void {
+        $this->resetAfterTest();
+        $stasher = $this->stash_fake_for_reinstall();
+        $stasher->set_expected_reldir('local_fake', 'local/fake');
+
+        $file = $stasher->get_stash_dir() . '/' . stasher::MANIFEST_FILE;
+        $manifest = json_decode(file_get_contents($file), true);
+        $manifest['local_fake']['reldir'] = $reldir;
+        file_put_contents($file, json_encode($manifest));
+
+        $this->assertSame(['local_fake' => stasher::REINSTALL_INVALID], $stasher->get_reinstall_statuses());
+
+        try {
+            $stasher->restore_component('local_fake', true, make_request_directory());
+            $this->fail('A tampered reldir must not be restored.');
+        } catch (\moodle_exception $e) {
+            $this->assertSame('errorinvalidstash', $e->errorcode);
+        }
+
+        $this->expectException(\moodle_exception::class);
+        $stasher->zip_component('local_fake', make_request_directory() . '/x.zip');
+    }
+
+    /**
+     * A symlink in place of the stashed copy, or above it, is never followed.
+     *
+     * @return void
+     */
+    public function test_symlinked_stash_copy_is_rejected(): void {
+        $this->resetAfterTest();
+        $stasher = $this->stash_fake_for_reinstall();
+        $stashdir = $stasher->get_stash_dir();
+        $reldir = $stasher->get_relative_dir(__DIR__ . '/fixtures/fakeplugin');
+
+        $outside = make_request_directory();
+        file_put_contents($outside . '/secret.txt', 'secret');
+
+        // The plugin's own directory replaced with a link.
+        remove_dir($stashdir . '/' . $reldir);
+        symlink($outside, $stashdir . '/' . $reldir);
+        $entry = $stasher->read_manifest()['local_fake'];
+        $this->assertFalse($stasher->is_valid_stash_entry('local_fake', $entry));
+        $this->assertSame(['local_fake' => stasher::REINSTALL_INVALID], $stasher->get_reinstall_statuses());
+
+        // A directory above it replaced with a link.
+        unlink($stashdir . '/' . $reldir);
+        $top = $stashdir . '/' . strtok($reldir, '/');
+        remove_dir($top);
+        $fake = make_request_directory();
+        make_writable_directory($fake . '/' . substr($reldir, strlen(strtok($reldir, '/')) + 1));
+        symlink($fake, $top);
+        $this->assertFalse($stasher->is_valid_stash_entry('local_fake', $entry));
+
+        $this->expectException(\moodle_exception::class);
+        $stasher->restore_component('local_fake', true, make_request_directory());
+    }
+
+    /**
+     * An installed plugin whose stash entry fails validation is offered for stashing again.
+     *
+     * @return void
+     */
+    public function test_get_stashable_plugins_offers_invalid_entry(): void {
+        $this->resetAfterTest();
+        $stasher = $this->stash_fake_for_reinstall();
+        $addons = ['local_fake' => (object) ['component' => 'local_fake', 'versiondisk' => 2026010100]];
+        $this->assertSame([], $stasher->get_stashable_plugins($addons));
+
+        $stasher->set_expected_reldir('local_fake', 'local/fake');
+        $this->assertSame(['local_fake'], array_keys($stasher->get_stashable_plugins($addons)));
+    }
+
+    /**
+     * A stashed version.php that declares a different plugin is rejected.
+     *
+     * @return void
+     */
+    public function test_stashed_version_php_declaring_another_component_is_rejected(): void {
+        $this->resetAfterTest();
+        $stasher = $this->stash_fake_with_version_php("\$plugin->component = 'local_other';");
+        $this->assertSame(['local_fake' => stasher::REINSTALL_INVALID], $stasher->get_reinstall_statuses());
+
+        $stasher = $this->stash_fake_with_version_php("\$plugin->component = 'local_fake';");
+        $this->assertSame(['local_fake' => stasher::REINSTALL_READY], $stasher->get_reinstall_statuses());
+    }
+
+    /**
+     * read_version_php() reads the stashed version.php without running it.
+     *
+     * @return void
+     */
+    public function test_read_version_php_does_not_run_the_file(): void {
+        $this->resetAfterTest();
+        $stasher = new stasher();
+
+        $dir = make_request_directory();
+        $marker = $dir . '/ran.txt';
+        file_put_contents($dir . '/version.php', "<?php\n"
+            . "file_put_contents(" . var_export($marker, true) . ", 'ran');\n"
+            . "\$plugin->component = 'local_fake'; // The component.\n"
+            . "\$plugin -> version = 2026010100;\n"
+            . "\$plugin->requires = 2025100600.01;\n"
+            . "\$plugin->release = \"v1.0\";\n"
+            . "\$plugin->incompatible = 503;\n"
+            . "\$plugin->supported = [501, 502];\n");
+
+        $method = new \ReflectionMethod($stasher, 'read_version_php');
+        $this->assertSame([
+            'component' => 'local_fake',
+            'version' => '2026010100',
+            'requires' => '2025100600.01',
+            'release' => 'v1.0',
+            'incompatible' => '503',
+        ], $method->invoke($stasher, $dir));
+        $this->assertFileDoesNotExist($marker);
+        $this->assertSame([], $method->invoke($stasher, make_request_directory()));
+    }
+
+    /**
      * zip_self() packs this tool from the code tree under its own folder.
      *
      * @return void
@@ -649,6 +803,31 @@ final class stasher_test extends \advanced_testcase {
         $this->assertNotFalse($zip->locateName('pluginstash/version.php'));
         $this->assertNotFalse($zip->locateName('pluginstash/classes/stasher.php'));
         $zip->close();
+    }
+
+    /**
+     * No risky capability is given to a role by default.
+     *
+     * A capability with RISK_CONFIG, RISK_XSS or RISK_DATALOSS stays with site
+     * administrators unless one grants it on purpose. Plugin Stash's own capability
+     * exposes the source of every add-on plugin, so it must have no default role.
+     *
+     * @return void
+     */
+    public function test_risky_capabilities_have_no_default_archetypes(): void {
+        global $CFG;
+
+        $capabilities = [];
+        require($CFG->dirroot . '/admin/tool/pluginstash/db/access.php');
+
+        $risky = RISK_CONFIG | RISK_XSS | RISK_DATALOSS;
+        foreach ($capabilities as $name => $definition) {
+            if (($definition['riskbitmask'] ?? 0) & $risky) {
+                $allowed = array_keys(array_filter($definition['archetypes'] ?? [], fn($p) => $p === CAP_ALLOW));
+                $this->assertSame([], $allowed, "{$name} is risky, so it must not be given to a role by default");
+            }
+        }
+        $this->assertSame([], $capabilities['tool/pluginstash:manage']['archetypes']);
     }
 
     /**

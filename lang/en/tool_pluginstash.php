@@ -51,6 +51,8 @@ $string['enabled'] = 'Enable stashing';
 $string['enabled_desc'] = 'When enabled, the Plugin Stash page can copy add-on plugins to the stash directory and reinstall them
 from it. Disable this to lock the tool without uninstalling it.';
 $string['errorcopyfailed'] = 'Failed to copy file: {$a}';
+$string['errorinvalidstash'] = 'The stashed copy of {$a} was not used: it is not in the plugin\'s folder or names another plugin.
+Stash the plugin again.';
 $string['errormanifestcorrupt'] = 'The stash manifest is corrupt and could not be read: {$a}';
 $string['errornotstashed'] = 'The plugin "{$a}" is not recorded in the stash.';
 $string['errorreinstall'] = 'Could not reinstall {$a->component}: {$a->reason}';
@@ -69,6 +71,7 @@ $string['reinstall_current'] = 'Installed';
 $string['reinstall_disabled'] = 'Not available: installing plugins from the web is turned off on this site.';
 $string['reinstall_downgrade'] = 'Not available: the site already has a newer version of this plugin.';
 $string['reinstall_incompatible'] = 'Not available: the stashed version does not support this version of Moodle.';
+$string['reinstall_invalid'] = 'Not available: the stashed copy does not match this plugin. Stash it again.';
 $string['reinstall_missing'] = 'Not available: the stashed copy is missing from the stash directory.';
 $string['reinstall_notwritable'] = 'Not available: the web server cannot write to this plugin\'s folder in the code tree.';
 $string['reinstall_unknowntype'] = 'Not available: this site does not recognise the plugin type. Install the plugin it belongs to
