@@ -30,4 +30,4 @@ jobs:
         run: bash .github/scripts/check_licence.sh
 
   ci:
-    uses: verzog/moodle-ci-workflows/.github/workflows/moodle-plugin-ci.yml@vdiddy/more-inputs
+    uses: verzog/moodle-ci-workflows/.github/workflows/moodle-plugin-ci.yml@v1
