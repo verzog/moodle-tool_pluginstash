@@ -177,20 +177,33 @@ above is reported as failed and left alone.
 ## Releasing
 
 Publishing a GitHub release whose tag matches `$plugin->release` in
-`version.php` (for example `v1.3.1`) runs the **Release zip** workflow. It
+`version.php` (for example `v1.3.1`) runs the **Release zip** workflow, which
+calls the shared `release-zip.yml` from
+[verzog/moodle-ci-workflows](https://github.com/verzog/moodle-ci-workflows). It
 builds `tool_pluginstash-v1.3.1.zip`, with the plugin in a `pluginstash/`
 folder and without development files, and attaches it to the release. If the
 tag and `version.php` disagree, the workflow fails and nothing is attached.
 
 ## Development
 
-Every push and pull request runs the **Moodle Plugin CI** workflow:
+The **Moodle Plugin CI** workflow runs on every pull request, and on pushes to
+`main` and to tags. Most of it comes from the shared `moodle-plugin-ci.yml` in
+[verzog/moodle-ci-workflows](https://github.com/verzog/moodle-ci-workflows),
+pinned to `@v1`:
 
-- A quick `policy` job checks that `LICENSE` is the GNU GPL v3 text and that
-  every PHP file has the `@license … GNU GPL v3 or later` tag.
-- The Moodle matrix (5.1, 5.2 and 5.3 LTS, plus Moodle's `main` branch, which
-  is allowed to fail) runs PHP lint, the Moodle code and PHPDoc checkers,
-  validation, PHPUnit and Behat. Warnings fail the build.
+- A quick `policy` job, kept in this repository, checks that `LICENSE` is the
+  GNU GPL v3 text and that every PHP file has the `@license … GNU GPL v3 or
+  later` tag.
+- The Moodle matrix covers 5.1 (PHP 8.2 on PostgreSQL, PHP 8.4 on MariaDB),
+  5.2 (PHP 8.3 on PostgreSQL) and 5.3 LTS (PHP 8.3 on PostgreSQL, PHP 8.4 on
+  MariaDB), plus Moodle's `main` branch on PHP 8.4, which is allowed to fail.
+  Tests run with the time zone set to Australia/Sydney.
+- Each cell runs the Moodle code and PHPDoc checkers, validation, the upgrade
+  savepoint and Mustache checks, PHPUnit and Behat (with SCSS deprecation
+  checks; a failed run uploads a Behat faildump). Warnings fail the build.
+  PHP Mess Detector findings are reported but do not fail it.
+- PHP lint runs once, on PHP 8.2, and the Grunt check once, on Moodle 5.1,
+  because neither result depends on the Moodle branch or database.
 - The PHPUnit suite also fails if a capability with configuration, XSS or
   data-loss risk is given to a role by default.
 
