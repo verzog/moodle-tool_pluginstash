@@ -209,6 +209,14 @@ pinned to `@v1`:
 
 ## Changelog
 
+### v1.3.2 (29/10/2026)
+
+- **Release string no longer carries the `v`.** `$plugin->release` is now
+  `1.3.2`: the leading `v` belongs on the Git tag only, not in `version.php`.
+  The previous `v1.3.1` was accepted by the release workflow but was rejected
+  by the Moodle plugins directory, which expects the tag with the `v` stripped
+  to equal `$plugin->release`.
+
 ### v1.3.1 (22/10/2026)
 
 - **Licence file fixed.** `LICENSE` now contains the GNU GPL v3, matching the
